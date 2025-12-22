@@ -1,207 +1,265 @@
-# MVP2 - Agentic Root Cause Analysis System
+# ⚡ OpsTron - AI-Powered Root Cause Analysis
 
-Production-ready agentic system for analyzing backend failures through log upload, commit correlation, and runbook search.
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Architecture
+An intelligent DevOps assistant that automatically analyzes runtime errors and provides actionable insights using AI.
 
-**Log-Upload Model**: Users manually upload logs. System does NOT access infrastructure.
+## Key Features
 
-### Components
+- **Automated Error Ingestion** - Backend services POST errors directly to the agent
+- **AI-Powered Analysis** - Uses LLMs to understand errors and suggest fixes
+- **GitHub Integration** - Analyzes recent commits for potential causes
+- **Runbook Matching** - Finds relevant documentation automatically
+- **Real-time Dashboard** - Monitor errors and RCA reports in browser
 
-1. **Backend Service** (`backend/`): Demo FastAPI service that generates realistic errors
-2. **Agent API** (`agent/`): FastAPI server exposing `/analyze` endpoint
-3. **Agentic Pipeline**:
-   - **LogAgent**: Extracts error signals from uploaded logs
-   - **CommitAgent**: Fetches recent GitHub commits
-   - **RunbookAgent**: Searches vector store for relevant fixes
-   - **SynthesizerAgent**: Uses Gemini to generate RCA report
+---
 
 ## Project Structure
 
 ```
-mvp2/
-├── backend/                    # Demo backend service
-│   ├── app.py                 # FastAPI service with error scenarios
-│   ├── requirements.txt       # Backend dependencies
-│   └── Dockerfile            # Container configuration
+opstron/
+├── agent/                      # RCA Agent Service (Port 8001)
+│   ├── api/                    # API Layer
+│   │   ├── __init__.py         # Router aggregation
+│   │   └── routes/             # Route handlers
+│   │       ├── health.py       # Health check endpoints
+│   │       ├── ingest.py       # Error ingestion (MVP3)
+│   │       ├── analyze.py      # Manual upload (MVP2)
+│   │       └── github.py       # GitHub configuration
+│   │
+│   ├── agents/                 # AI Agent Modules
+│   │   ├── log_agent.py        # Log analysis
+│   │   ├── commit_agent.py     # Git commit analysis
+│   │   ├── runbook_agent.py    # Runbook matching
+│   │   └── synthesizer_agent.py # RCA synthesis
+│   │
+│   ├── services/               # Business Logic
+│   │   └── rca_service.py      # RCA orchestration service
+│   │
+│   ├── models/                 # Data Models
+│   │   └── error_models.py     # Pydantic schemas
+│   │
+│   ├── config/                 # Configuration
+│   │   ├── settings.py         # App settings
+│   │   └── .env                # Environment variables
+│   │
+│   ├── db/                     # Database Layer
+│   │   └── chroma_store/       # Vector DB for runbooks
+│   │
+│   ├── tools/                  # Utilities
+│   │   ├── github_api.py       # GitHub client
+│   │   └── log_parser.py       # Log parsing utilities
+│   │
+│   ├── main.py                 # Application entry point
+│   ├── orchestrator.py         # Agent orchestration
+│   ├── llm.py                  # LLM client (Ollama/Gemini)
+│   └── schemas.py              # Legacy schemas
 │
-├── agent/                     # Agentic RCA system
-│   ├── main.py               # FastAPI API server
-│   ├── orchestrator.py       # Multi-agent coordinator
-│   ├── llm.py                # LLM client wrapper
-│   ├── requirements.txt      # Agent dependencies
-│   │
-│   ├── agents/               # Individual agents
-│   │   ├── log_agent.py      # Log analysis
-│   │   ├── commit_agent.py   # GitHub commit fetching
-│   │   ├── runbook_agent.py  # Vector search
-│   │   └── synthesizer_agent.py  # RCA synthesis
-│   │
-│   ├── tools/                # Utility tools
-│   │   ├── github_api.py     # GitHub API client
-│   │   ├── log_parser.py     # Log parsing utilities
-│   │   ├── doc_loader.py     # Document loader
-│   │   └── utils.py          # Helper functions
-│   │
-│   ├── db/                   # Database layer
-│   │   ├── chroma_store/
-│   │   │   └── vector_store.py  # ChromaDB interface
-│   │   └── load_runbooks.py  # Runbook loader script
-│   │
-│   └── config/               # Configuration
-│       ├── settings.py       # Settings management
-│       └── .env.example      # Environment template
+├── demo-backend/               # Demo Backend Service (Port 8000)
+│   ├── app.py                  # FastAPI demo service
+│   └── requirements.txt        # Dependencies
 │
-└── runbooks/                 # Troubleshooting documentation
-    ├── db_deadlock.md
-    ├── api_timeout.md
-    └── service_down.md
+├── frontend/                   # Dashboard UI (Port 3000)
+│   ├── index.html              # Main HTML
+│   ├── src/
+│   │   ├── css/
+│   │   │   └── main.css        # Styles
+│   │   ├── js/
+│   │   │   └── app.js          # Application logic
+│   │   └── assets/             # Images, icons
+│   └── server.py               # Development server
+│
+├── runbooks/                   # Runbook Documents
+│   ├── api_timeout.md
+│   ├── db_deadlock.md
+│   └── service_down.md
+│
+└── docs/                       # Documentation
+    ├── MVP3_README.md          # MVP3 features detail
+    ├── QUICKSTART.md           # Getting started
+    ├── COMMANDS.md             # CLI commands
+    └── GEMINI_MIGRATION.md     # LLM setup guide
 ```
 
-## Setup Instructions
+---
 
-### 1. Backend Service Setup
+## Quick Start
+
+### 1. Clone and Setup
 
 ```bash
-cd backend
-pip install -r requirements.txt
-python app.py
+git clone https://github.com/yourusername/opstron.git
+cd opstron
 ```
 
-The backend will run on `http://localhost:8000`
+### 2. Start the Agent (Terminal 1)
 
-### 2. Agent System Setup
-
-```bash
+```powershell
 cd agent
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-cp config/.env.example config/.env
-# Edit config/.env and add your API keys:
-# - ANTHROPIC_API_KEY
-# - GITHUB_TOKEN
-
-# Load runbooks into ChromaDB
-cd db
-python load_runbooks.py
-cd ..
-
-# Start the agent API
+.\venv\Scripts\Activate.ps1
 python main.py
 ```
 
-The agent API will run on `http://localhost:8001`
+### 3. Start Demo Backend (Terminal 2)
 
-## Usage
-
-### 1. Generate Sample Logs
-
-Make requests to the backend service to generate error logs:
-
-```bash
-curl -X POST http://localhost:8000/checkout \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user123",
-    "cart_items": ["item1", "item2"],
-    "payment_method": "credit_card"
-  }'
+```powershell
+cd demo-backend
+.\venv\Scripts\Activate.ps1
+python -m uvicorn app:app --port 8000
 ```
 
-Check `backend/backend.log` for generated error logs.
+### 4. Start Frontend (Terminal 3)
 
-### 2. Analyze Logs
-
-Upload the log file to the agent API:
-
-```bash
-curl -X POST http://localhost:8001/analyze \
-  -F "service=payment-service" \
-  -F "repo=your-org/your-repo" \
-  -F "log_file=@backend/backend.log"
+```powershell
+cd frontend
+python server.py
 ```
 
-### 3. Review RCA Report
+### 5. Open Dashboard
 
-The API will return a comprehensive JSON report:
+Navigate to **http://localhost:3000**
 
-```json
-{
-  "service": "payment-service",
-  "root_cause": "Database deadlock in payment processing",
-  "confidence": "high",
-  "contributing_factors": [
-    "Concurrent transactions on order table",
-    "Missing index on order_id column"
-  ],
-  "evidence": {
-    "logs": "ERROR: Deadlock found when trying to get lock",
-    "commits": "Recent commit modified transaction ordering",
-    "runbooks": "Database Deadlock Resolution runbook matched"
-  },
-  "recommended_actions": [
-    "Add index on orders.order_id",
-    "Implement retry logic with exponential backoff",
-    "Review transaction ordering in recent commits"
-  ],
-  "timeline": "Deadlock occurred during high-concurrency checkout",
-  "analyzed_at": "2025-12-18T20:31:11.123456"
-}
-```
+---
 
-## API Endpoints
+## API Reference
 
-### Backend Service
+### Agent API (Port 8001)
 
-- `GET /health` - Health check
-- `POST /checkout` - Simulate checkout (generates errors)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | System health check |
+| `/ingest-error` | POST | Automated error ingestion |
+| `/analyze` | POST | Manual log file upload |
+| `/config/github` | GET/POST | GitHub configuration |
+| `/commits` | GET | Fetch recent commits |
+| `/docs` | GET | Interactive API documentation |
 
-### Agent API
+### Demo Backend API (Port 8000)
 
-- `GET /health` - Health check with agent status
-- `POST /analyze` - Analyze logs and generate RCA
-  - Form fields:
-    - `service` (string): Service name
-    - `repo` (string): GitHub repository (e.g., "owner/repo")
-    - `log_file` (file): Log file (.log extension required)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Backend health check |
+| `/trigger-error` | GET | Trigger test error |
+| `/checkout` | POST | Demo endpoint (random errors) |
+| `/logs` | GET | View log buffer |
 
-## Technology Stack
+---
 
-- **Framework**: FastAPI
-- **LLM**: Google Gemini 2.0 Flash (via LangChain)
-- **Vector DB**: ChromaDB
-- **GitHub API**: aiohttp
-- **Configuration**: Pydantic Settings
+## Configuration
 
-## Key Features
+### Environment Variables
 
-✅ **Multi-Agent Architecture**: Specialized agents for different analysis tasks  
-✅ **LLM-Powered Analysis**: Gemini for intelligent log interpretation  
-✅ **Vector Search**: Semantic search over runbook documentation  
-✅ **GitHub Integration**: Correlates errors with recent code changes  
-✅ **Structured Output**: JSON-formatted RCA reports  
-✅ **Async Processing**: Non-blocking API operations  
-
-## Development Notes
-
-- The backend service randomly generates different error types (timeout, deadlock, null pointer)
-- Runbooks are loaded into ChromaDB for semantic search
-- The system uses a 4-step pipeline: Log Analysis → Commit Fetch → Runbook Search → Synthesis
-- All agents are orchestrated sequentially for comprehensive analysis
-
-## Environment Variables
-
-Required in `agent/config/.env`:
+Create `agent/config/.env`:
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
-GITHUB_TOKEN=your_github_token_here
-CHROMA_PERSIST_DIR=./db/chroma_data
+# LLM Configuration
+GEMINI_API_KEY=your_key_here      # For cloud LLM (optional)
+
+# GitHub Integration
+GITHUB_TOKEN=ghp_xxxxx            # Personal access token
+DEFAULT_REPO=owner/repo           # Default repository
+
+# Database
+CHROMA_PERSIST_DIR=./db/chroma_store
 ```
+
+### LLM Backend
+
+OpsTron supports two LLM backends:
+
+| Backend | Pros | Cons |
+|---------|------|------|
+| **Ollama (Local)** | Free, private, no rate limits | Slower, requires GPU |
+| **Gemini (Cloud)** | Fast, high quality | Rate limits, API costs |
+
+The agent automatically detects Ollama and uses it if available.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        FRONTEND                              │
+│                   (Dashboard UI - Port 3000)                 │
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                         AGENT                                │
+│                   (RCA System - Port 8001)                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                   API Layer                          │    │
+│  │  /health  /ingest-error  /analyze  /config/github   │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                          │                                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                  Orchestrator                        │    │
+│  │         Coordinates all agent activities             │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                          │                                   │
+│  ┌──────────┬──────────┬──────────┬──────────┐              │
+│  │ LogAgent │CommitAgent│RunbookAgent│Synthesizer│          │
+│  └──────────┴──────────┴──────────┴──────────┘              │
+│                          │                                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              LLM Client (Ollama/Gemini)             │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+                              ▲
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                      DEMO BACKEND                            │
+│                   (Test Service - Port 8000)                 │
+│                                                              │
+│  Error Middleware → Log Buffer → POST to /ingest-error      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Testing
+
+```powershell
+# Trigger a test error (automatically analyzed)
+curl http://localhost:8000/trigger-error
+
+# Check agent health
+curl http://localhost:8001/health
+
+# Configure GitHub
+curl -X POST http://localhost:8001/config/github `
+  -H "Content-Type: application/json" `
+  -d '{"token":"ghp_xxx","repo":"owner/repo"}'
+
+# Fetch commits
+curl "http://localhost:8001/commits?limit=5"
+```
+
+---
+
+## Technologies
+
+- **Backend**: Python 3.12, FastAPI
+- **Frontend**: HTML5, CSS3, JavaScript (Vanilla)
+- **LLM**: Ollama (Phi-3) / Google Gemini
+- **Vector DB**: ChromaDB
+- **HTTP Client**: httpx
+
+---
 
 ## License
 
-MIT License
+MIT License - See [LICENSE](LICENSE) for details.
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request

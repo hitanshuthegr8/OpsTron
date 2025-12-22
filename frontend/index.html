@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsTron - AI-Powered RCA Dashboard</title>
+    <link rel="stylesheet" href="src/css/main.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">⚡</span>
+                    <span class="logo-text">OpsTron</span>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-section="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-section="github">
+                    <span class="nav-icon">🔗</span>
+                    <span>GitHub Config</span>
+                </a>
+                <a href="#" class="nav-item" data-section="errors">
+                    <span class="nav-icon">🚨</span>
+                    <span>Error Logs</span>
+                </a>
+                <a href="#" class="nav-item" data-section="runbooks">
+                    <span class="nav-icon">📖</span>
+                    <span>Runbooks</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator" id="agent-status">
+                    <span class="status-dot"></span>
+                    <span>Agent: Checking...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <h1 class="page-title" id="page-title">Dashboard</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="refresh-btn">
+                        <span>↻</span> Refresh
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dashboard Section -->
+            <section class="section" id="section-dashboard">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon errors">🚨</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-errors">0</div>
+                            <div class="stat-label">Errors Captured</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon commits">📝</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-commits">--</div>
+                            <div class="stat-label">Recent Commits</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon runbooks">📖</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-runbooks">3</div>
+                            <div class="stat-label">Runbooks Loaded</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon status">✅</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-status">--</div>
+                            <div class="stat-label">Agent Status</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Recent RCA Reports</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="rca-reports" class="reports-list">
+                            <div class="empty-state">
+                                <span class="empty-icon">📋</span>
+                                <p>No RCA reports yet. Trigger an error to see analysis.</p>
+                                <button class="btn btn-primary" id="trigger-error-btn">Trigger Test Error</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- GitHub Config Section -->
+            <section class="section hidden" id="section-github">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>GitHub Configuration</h2>
+                        <span class="badge" id="github-status">Not Connected</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="github-form" class="form">
+                            <div class="form-group">
+                                <label for="github-token">GitHub Personal Access Token</label>
+                                <div class="input-group">
+                                    <input type="password" id="github-token" placeholder="ghp_xxxxxxxxxxxx"
+                                        class="input">
+                                    <button type="button" class="btn btn-icon" id="toggle-token">👁️</button>
+                                </div>
+                                <small class="form-hint">Create a token at GitHub → Settings → Developer Settings →
+                                    Personal Access Tokens</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="github-repo">Repository (owner/repo)</label>
+                                <input type="text" id="github-repo" placeholder="hitanshuthegr8/OpsTron" class="input">
+                                <small class="form-hint">Format: owner/repo - e.g., microsoft/vscode,
+                                    hitanshuthegr8/OpsTron</small>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Save & Connect</button>
+                                <button type="button" class="btn btn-secondary" id="test-github-btn">Test
+                                    Connection</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card" id="commits-card">
+                    <div class="card-header">
+                        <h2>Recent Commits</h2>
+                        <button class="btn btn-secondary btn-sm" id="fetch-commits-btn">Fetch Commits</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="commits-list" class="commits-list">
+                            <div class="empty-state">
+                                <span class="empty-icon">📝</span>
+                                <p>Configure GitHub token to view commits</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Errors Section -->
+            <section class="section hidden" id="section-errors">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Error Logs</h2>
+                        <button class="btn btn-primary" id="trigger-error-btn-2">Trigger Test Error</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="error-logs" class="logs-container">
+                            <div class="empty-state">
+                                <span class="empty-icon">📋</span>
+                                <p>No errors logged yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Runbooks Section -->
+            <section class="section hidden" id="section-runbooks">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Loaded Runbooks</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="runbooks-list" class="runbooks-grid">
+                            <div class="runbook-card">
+                                <div class="runbook-icon">⏱️</div>
+                                <h3>API Timeout</h3>
+                                <p>Handling timeout issues in API calls</p>
+                            </div>
+                            <div class="runbook-card">
+                                <div class="runbook-icon">🔒</div>
+                                <h3>Database Deadlock</h3>
+                                <p>Resolving database deadlock scenarios</p>
+                            </div>
+                            <div class="runbook-card">
+                                <div class="runbook-icon">🔴</div>
+                                <h3>Service Down</h3>
+                                <p>Recovery procedures for service outages</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="src/js/app.js"></script>
+</body>
+
+</html>
