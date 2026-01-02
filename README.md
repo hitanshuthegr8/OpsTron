@@ -13,6 +13,7 @@ An intelligent DevOps assistant that automatically analyzes runtime errors and p
 - **GitHub Integration** - Analyzes recent commits for potential causes
 - **Runbook Matching** - Finds relevant documentation automatically
 - **Real-time Dashboard** - Monitor errors and RCA reports in browser
+- **🚀 Deployment Protection (MVP4)** - Catches deployment regressions via GitHub Actions integration
 
 ---
 
@@ -144,6 +145,69 @@ Navigate to **http://localhost:3000**
 | `/trigger-error` | GET | Trigger test error |
 | `/checkout` | POST | Demo endpoint (random errors) |
 | `/logs` | GET | View log buffer |
+
+---
+
+## 🚀 Deployment Protection (MVP4)
+
+OpsTron can automatically detect errors caused by recent code deployments using GitHub Actions integration.
+
+### How It Works
+
+1. **Developer pushes code** → GitHub Actions triggers
+2. **GitHub notifies OpsTron** → Agent enters "Watch Mode" for 5 minutes
+3. **If error occurs during watch** → OpsTron fetches the commit diff
+4. **AI correlates error with code changes** → Provides rollback recommendation
+
+### Setup GitHub Actions
+
+The workflow file is already created at `.github/workflows/opstron_notify.yml`.
+
+**Add the secret to your repository:**
+
+1. Go to your GitHub repo → **Settings** → **Secrets and variables** → **Actions**
+2. Click **New repository secret**
+3. Name: `OPSTRON_URL`
+4. Value: Your OpsTron server URL (e.g., `http://your-server-ip:8001`)
+
+### Deployment Protection API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/notify-deployment` | POST | Called by GitHub Actions on push |
+| `/deployment-status` | GET | Check if watch mode is active |
+| `/deployment-history` | GET | View recent deployments and errors |
+
+### Example: Deployment Notification
+
+```bash
+# Sent automatically by GitHub Actions:
+curl -X POST http://localhost:8001/notify-deployment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commit_sha": "a1b2c3d4e5f6...",
+    "repository": "hitanshuthegr8/OpsTron",
+    "author": "hitanshuthegr8",
+    "message": "fix: updated database logic",
+    "branch": "main"
+  }'
+```
+
+### Check Deployment Status
+
+```bash
+curl http://localhost:8001/deployment-status
+
+# Response when watching:
+{
+  "status": "watching",
+  "active_deployment": {
+    "commit_sha": "a1b2c3d",
+    "author": "hitanshuthegr8",
+    "watch_until": "2024-01-15T10:35:00Z"
+  }
+}
+```
 
 ---
 

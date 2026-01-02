@@ -139,3 +139,77 @@ class IngestResponse(BaseModel):
     processing_time_ms: float = Field(
         description="Time taken to process in milliseconds"
     )
+
+
+# =============================================================================
+# Deployment Protection Models (MVP4)
+# =============================================================================
+
+class DeploymentPayload(BaseModel):
+    """
+    Deployment notification payload from CI/CD (GitHub Actions).
+    
+    This is sent when code is pushed, allowing OpsTron to enter
+    "Deployment Watch Mode" and correlate errors with recent commits.
+    """
+    
+    commit_sha: str = Field(
+        ...,
+        description="Full SHA of the deployed commit",
+        example="a1b2c3d4e5f6g7h8i9j0"
+    )
+    repository: str = Field(
+        ...,
+        description="GitHub repository in owner/repo format",
+        example="hitanshuthegr8/OpsTron"
+    )
+    author: str = Field(
+        ...,
+        description="GitHub username of the commit author",
+        example="hitanshuthegr8"
+    )
+    message: Optional[str] = Field(
+        default="",
+        description="Commit message"
+    )
+    branch: str = Field(
+        default="main",
+        description="Branch that was deployed"
+    )
+    timestamp: str = Field(
+        default_factory=lambda: datetime.utcnow().isoformat(),
+        description="When the deployment was triggered"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "commit_sha": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
+                "repository": "hitanshuthegr8/OpsTron",
+                "author": "hitanshuthegr8",
+                "message": "fix: updated database connection logic",
+                "branch": "main"
+            }
+        }
+
+
+class DeploymentResponse(BaseModel):
+    """
+    Response from deployment notification endpoint.
+    """
+    
+    status: str = Field(
+        description="Status: 'watching' or 'error'"
+    )
+    deployment_id: str = Field(
+        description="Unique ID for this deployment watch session"
+    )
+    commit_sha: str = Field(
+        description="The commit SHA being watched"
+    )
+    watch_until: str = Field(
+        description="ISO timestamp when watch mode expires"
+    )
+    message: str = Field(
+        description="Human readable status message"
+    )

@@ -19,29 +19,13 @@ class SynthesizerAgent:
         metadata: Optional[Dict[str, Any]] = None  # MVP3: Optional error metadata
     ) -> Dict[str, Any]:
         
-        system_prompt = """You are a senior SRE conducting root cause analysis.
-
-Synthesize all evidence to determine:
-1. Root cause of the failure
-2. Contributing factors
-3. Recommended fixes
-4. Confidence level
-
-Be precise, technical, and actionable. Cite specific log lines, commits, or runbook sections.
-
-Return ONLY valid JSON:
-{
-    "root_cause": "primary cause",
-    "confidence": "high|medium|low",
-    "contributing_factors": ["factor1", "factor2"],
-    "evidence": {
-        "logs": "key log evidence",
-        "commits": "relevant commits",
-        "runbooks": "applicable runbooks"
-    },
-    "recommended_actions": ["action1", "action2"],
-    "timeline": "estimated sequence of events"
-}"""
+        # MVP4: Check if this is a deployment-related error
+        is_deployment_related = metadata and metadata.get("deployment_context")
+        
+        if is_deployment_related:
+            system_prompt = self._get_deployment_system_prompt()
+        else:
+            system_prompt = self._get_standard_system_prompt()
 
         # Build user prompt with optional metadata (MVP3 enhancement)
         metadata_section = ""
@@ -75,6 +59,11 @@ Provide root cause analysis in JSON format."""
                 result["error_timestamp"] = metadata.get("timestamp")
                 result["environment"] = metadata.get("environment")
                 result["request_id"] = metadata.get("request_id")
+                
+                # MVP4: Add deployment context
+                if is_deployment_related:
+                    result["is_deployment_regression"] = True
+                    result["suspect_commit"] = metadata["deployment_context"].get("suspect_commit")
             else:
                 result["ingestion_mode"] = "manual"
             
@@ -134,4 +123,76 @@ Provide root cause analysis in JSON format."""
         for result in results:
             lines.append(f"- {result.get('title', 'Untitled')}: {result.get('snippet', '')[:200]}")
         return "\n".join(lines)
+    
+    def _get_standard_system_prompt(self) -> str:
+        """Standard RCA prompt for runtime errors."""
+        return """You are a senior SRE conducting root cause analysis.
+
+Synthesize all evidence to determine:
+1. Root cause of the failure
+2. Contributing factors
+3. Recommended fixes
+4. Confidence level
+
+Be precise, technical, and actionable. Cite specific log lines, commits, or runbook sections.
+
+Return ONLY valid JSON:
+{
+    "root_cause": "primary cause",
+    "confidence": "high|medium|low",
+    "contributing_factors": ["factor1", "factor2"],
+    "evidence": {
+        "logs": "key log evidence",
+        "commits": "relevant commits",
+        "runbooks": "applicable runbooks"
+    },
+    "recommended_actions": ["action1", "action2"],
+    "timeline": "estimated sequence of events"
+}"""
+    
+    def _get_deployment_system_prompt(self) -> str:
+        """Specialized prompt for deployment regression analysis (MVP4)."""
+        return """You are a senior SRE analyzing a DEPLOYMENT REGRESSION.
+
+⚠️ CRITICAL: This error occurred within 5 minutes of a code deployment.
+
+Your primary task is to:
+1. Analyze the COMMIT DIFF to find the exact code change that caused the failure
+2. Compare the stacktrace with the modified files and lines
+3. Determine if this is definitely caused by the deployment or coincidental
+4. Provide a clear ROLLBACK RECOMMENDATION
+
+Be extremely precise. Reference specific:
+- File names and line numbers from the commit diff
+- Error messages that match the changed code
+- The exact code change that introduced the bug
+
+Return ONLY valid JSON:
+{
+    "root_cause": "Specific code change that caused the failure",
+    "is_deployment_caused": true/false,
+    "confidence": "high|medium|low",
+    "suspect_code_change": {
+        "file": "filename.py",
+        "line_range": "42-48",
+        "description": "What was changed"
+    },
+    "error_correlation": "How the error relates to the code change",
+    "contributing_factors": ["factor1", "factor2"],
+    "evidence": {
+        "logs": "key log evidence",
+        "diff": "relevant code changes",
+        "runbooks": "applicable runbooks"
+    },
+    "recommended_actions": [
+        "IMMEDIATE: action",
+        "ROLLBACK: git revert command or steps",
+        "FIX: how to fix the issue"
+    ],
+    "rollback_recommendation": {
+        "should_rollback": true/false,
+        "urgency": "critical|high|medium|low",
+        "command": "git revert <sha> or other rollback steps"
+    }
+}"""
 

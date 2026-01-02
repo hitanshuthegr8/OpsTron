@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./db/chroma_data"
     
     # MVP3: Default settings for automated ingestion
-    DEFAULT_REPO: str = "owner/repo"  # Default repo for commit analysis
+    DEFAULT_REPO: str = "hitanshuthegr8/OpsTron"  # Default repo for commit analysis
     AGENT_URL: str = "http://localhost:8001"  # Agent API URL
     
     class Config:

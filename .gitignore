@@ -62,3 +62,6 @@ htmlcov/
 *.pid
 *.seed
 *.pid.lock
+
+# Sample Project (separate repo)
+projects/sample/

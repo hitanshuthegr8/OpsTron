@@ -8,7 +8,7 @@
 // ===========================================
 const CONFIG = {
     AGENT_URL: 'http://localhost:8001',
-    DEMO_BACKEND_URL: 'http://localhost:8000',
+    DEMO_BACKEND_URL: 'http://localhost:5174',
     GITHUB_API: 'https://api.github.com'
 };
 
@@ -334,16 +334,20 @@ function renderCommits(commits) {
 // Error Triggering & RCA
 // ===========================================
 async function triggerTestError() {
-    showToast('Triggering test error...', 'info');
+    showToast('Triggering test error on sample app...', 'info');
 
     try {
-        const response = await fetch(`${CONFIG.DEMO_BACKEND_URL}/trigger-error`);
-        // This will fail with 500, which is expected
+        // Call the sample app's /error endpoint
+        const response = await fetch(`${CONFIG.DEMO_BACKEND_URL}/error`);
+        const data = await response.json();
+
+        if (data.rca) {
+            showToast('RCA analysis received!', 'success');
+        }
     } catch (error) {
-        // Expected - error was triggered
+        console.log('Error expected:', error);
     }
 
-    showToast('Error triggered! Waiting for RCA analysis...', 'warning');
     state.errorLogs.push({
         time: new Date().toISOString(),
         level: 'ERROR',
@@ -351,31 +355,51 @@ async function triggerTestError() {
     });
     elements.statErrors.textContent = state.errorLogs.length;
 
-    // Wait a bit and check for new RCA report
-    setTimeout(checkForNewRCA, 5000);
+    showToast('Error triggered! Fetching RCA reports...', 'warning');
+
+    // Wait a bit for the RCA to be processed, then fetch history
+    setTimeout(fetchRCAHistory, 3000);
+}
+
+async function fetchRCAHistory() {
+    try {
+        const response = await fetch(`${CONFIG.AGENT_URL}/rca-history`);
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch RCA history');
+        }
+
+        const data = await response.json();
+
+        if (data.reports && data.reports.length > 0) {
+            // Transform the reports to match our frontend format
+            state.rcaReports = data.reports.map(report => ({
+                id: report.id,
+                service: report.service,
+                root_cause: report.rca_report?.root_cause || report.error || 'Unknown',
+                confidence: report.rca_report?.confidence || 'medium',
+                analyzed_at: report.analyzed_at,
+                processing_time_ms: report.processing_time_ms,
+                recommended_actions: report.rca_report?.recommended_actions ||
+                    report.rca_report?.recommendations ||
+                    ['Review the error details', 'Check recent code changes']
+            }));
+
+            renderRCAReports();
+            elements.statErrors.textContent = state.rcaReports.length;
+            showToast(`Found ${data.reports.length} RCA reports!`, 'success');
+        } else {
+            showToast('No RCA reports found yet', 'info');
+        }
+    } catch (error) {
+        console.error('Failed to fetch RCA history:', error);
+        showToast('Failed to fetch RCA history', 'error');
+    }
 }
 
 async function checkForNewRCA() {
-    showToast('Checking for RCA results...', 'info');
-
-    // In a real implementation, we'd poll the agent for results
-    // For now, add a sample report
-    const mockReport = {
-        id: Date.now(),
-        service: 'checkout-api',
-        root_cause: 'ValueError triggered in test endpoint',
-        confidence: 'medium',
-        analyzed_at: new Date().toISOString(),
-        recommended_actions: [
-            'Check input validation',
-            'Review error handling logic',
-            'Add proper exception handling'
-        ]
-    };
-
-    state.rcaReports.unshift(mockReport);
-    renderRCAReports();
-    showToast('RCA analysis completed!', 'success');
+    // Fetch real RCA history from the agent
+    await fetchRCAHistory();
 }
 
 function renderRCAReports() {
@@ -447,6 +471,7 @@ async function init() {
     // Set up refresh button
     elements.refreshBtn.addEventListener('click', async () => {
         await checkAgentStatus();
+        await fetchRCAHistory();
         if (state.githubRepo) {
             await fetchCommits();
         }
@@ -460,8 +485,8 @@ async function init() {
     // Periodic status check
     setInterval(checkAgentStatus, 30000);
 
-    // Render any existing reports
-    renderRCAReports();
+    // Fetch any existing RCA reports from agent
+    await fetchRCAHistory();
 
     console.log('✅ OpsTron Dashboard ready!');
 }
