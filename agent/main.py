@@ -87,7 +87,7 @@ def create_app() -> FastAPI:
 
 def _register_routes(app: FastAPI):
     """Register all API routes."""
-    from api import api_router
+    from app.api import api_router
     app.include_router(api_router)
 
 
