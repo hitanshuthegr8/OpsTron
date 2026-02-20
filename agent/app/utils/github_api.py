@@ -16,10 +16,9 @@ class GitHubClient:
             repo = repo.replace("https://github.com/", "")
         
         url = f"{self.base_url}/repos/{repo}/commits"
-        headers = {
-            "Authorization": f"token {self.token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
+        headers = {"Accept": "application/vnd.github.v3+json"}
+        if self.token:
+            headers["Authorization"] = f"token {self.token}"
         
         params = {"per_page": limit}
         
@@ -66,10 +65,9 @@ class GitHubClient:
             repo = repo.replace("https://github.com/", "")
         
         url = f"{self.base_url}/repos/{repo}/commits/{commit_sha}"
-        headers = {
-            "Authorization": f"token {self.token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
+        headers = {"Accept": "application/vnd.github.v3+json"}
+        if self.token:
+            headers["Authorization"] = f"token {self.token}"
         
         try:
             async with aiohttp.ClientSession() as session:

@@ -15,12 +15,12 @@ class Settings(BaseSettings):
     # ==========================================================================
     # LLM Configuration
     # ==========================================================================
-    GEMINI_API_KEY: str
+    GEMINI_API_KEY: str = ""
     
     # ==========================================================================
     # GitHub Integration
     # ==========================================================================
-    GITHUB_TOKEN: str
+    GITHUB_TOKEN: str = ""
     DEFAULT_REPO: str = "hitanshuthegr8/OpsTron"
     
     # ==========================================================================
@@ -29,24 +29,29 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./db/chroma_data"
     
     # ==========================================================================
-    # Supabase Configuration (Database + Auth)
+    # GitHub OAuth (User Authentication)
     # ==========================================================================
-    SUPABASE_URL: str = ""
-    SUPABASE_ANON_KEY: str = ""
-    SUPABASE_SERVICE_KEY: str = ""
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+    FRONTEND_URL: str = "http://localhost:5173"
     
     # ==========================================================================
-    # VAPI Configuration (Voice Calls)
+    # Webhook Security (HMAC)
     # ==========================================================================
-    VAPI_API_KEY: str = ""
-    VAPI_ASSISTANT_ID: str = ""
-    VAPI_PHONE_NUMBER_ID: str = ""
+    WEBHOOK_SECRET: str = ""
+    
+    # ==========================================================================
+    # Twilio Configuration (Voice Alerts)
+    # ==========================================================================
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_PHONE_NUMBER: str = ""
     ALERT_PHONE_NUMBER: str = ""
     
     # ==========================================================================
     # Service Authentication
     # ==========================================================================
-    SERVICE_API_KEY: str = ""  # For GitHub Actions → Agent auth
+    SERVICE_API_KEY: str = ""
     
     # ==========================================================================
     # Agent Configuration
@@ -55,8 +60,9 @@ class Settings(BaseSettings):
     DEPLOYMENT_WATCH_MINUTES: int = 5
     
     class Config:
-        env_file = os.path.join(os.path.dirname(__file__), ".env")
+        env_file = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env")
         case_sensitive = True
+        extra = "ignore"  # Ignore any extra env vars not defined here
 
 
 settings = Settings()

@@ -1,289 +1,161 @@
 """
-Authentication Routes
+GitHub OAuth Authentication Routes
 
-Handles user registration, login, and profile management via Supabase Auth.
+Implements the full GitHub OAuth2 Authorization Code flow:
+1. /auth/github/login    → Redirects user to GitHub's consent screen
+2. /auth/github/callback → GitHub redirects back here with a code
+3. /auth/me              → Returns the authenticated user's profile
+4. /auth/logout          → Destroys the session
 """
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+import httpx
 import logging
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse
 
-from app.db.supabase_client import SupabaseClient, db
-from app.api.middleware.auth import verify_supabase_jwt, UserAuth
+from app.core.config.settings import settings
+from app.api.middleware.auth import (
+    create_session,
+    destroy_session,
+    verify_github_session,
+    GitHubAuth,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-
-# =============================================================================
-# Request/Response Models
-# =============================================================================
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
-    full_name: Optional[str] = None
-    phone_number: Optional[str] = None
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class AuthResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    user: dict
-    message: str
-
-
-class UserProfile(BaseModel):
-    id: str
-    email: str
-    full_name: Optional[str] = None
-    phone_number: Optional[str] = None
-    role: str = "user"
+# GitHub OAuth endpoints
+GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_USER_URL = "https://api.github.com/user"
 
 
 # =============================================================================
-# Routes
+# Step 1: Redirect user to GitHub
 # =============================================================================
 
-@router.post("/register", response_model=AuthResponse)
-async def register(request: RegisterRequest):
+@router.get("/github/login")
+async def github_login():
     """
-    Register a new user.
+    Redirect the user to GitHub's OAuth authorization page.
     
-    Creates a user in Supabase Auth and a profile in user_profiles table.
+    The user will see GitHub's consent screen asking them to authorize
+    your OpsTron OAuth App. After they click "Authorize", GitHub redirects
+    them to /auth/github/callback with a temporary `code`.
     """
-    client = SupabaseClient.get_anon_client()
-    
-    if not client:
+    if not settings.GITHUB_CLIENT_ID:
         raise HTTPException(
             status_code=503,
-            detail="Authentication service not configured"
+            detail="GitHub OAuth is not configured. Set GITHUB_CLIENT_ID in .env"
         )
     
-    try:
-        # Register with Supabase Auth
-        result = client.auth.sign_up({
-            "email": request.email,
-            "password": request.password,
-            "options": {
-                "data": {
-                    "full_name": request.full_name
-                }
-            }
-        })
-        
-        if not result.user:
-            raise HTTPException(
-                status_code=400,
-                detail="Registration failed"
-            )
-        
-        # Create user profile in database
-        service_client = SupabaseClient.get_client()
-        if service_client:
-            try:
-                service_client.table("user_profiles").insert({
-                    "id": result.user.id,
-                    "full_name": request.full_name,
-                    "phone_number": request.phone_number,
-                    "role": "user"
-                }).execute()
-            except Exception as e:
-                logger.warning(f"Failed to create user profile: {e}")
-        
-        logger.info(f"New user registered: {request.email}")
-        
-        return AuthResponse(
-            access_token=result.session.access_token if result.session else "",
-            refresh_token=result.session.refresh_token if result.session else "",
-            user={
-                "id": result.user.id,
-                "email": result.user.email,
-                "full_name": request.full_name
-            },
-            message="Registration successful. Please check your email to verify your account."
-        )
-        
-    except Exception as e:
-        logger.error(f"Registration failed: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
+    # We request read:user and user:email scopes
+    # This gives us their profile info and primary email
+    github_redirect = (
+        f"{GITHUB_AUTHORIZE_URL}"
+        f"?client_id={settings.GITHUB_CLIENT_ID}"
+        f"&scope=read:user user:email"
+    )
+    
+    return RedirectResponse(url=github_redirect)
 
 
-@router.post("/login", response_model=AuthResponse)
-async def login(request: LoginRequest):
+# =============================================================================
+# Step 2: Handle the callback from GitHub
+# =============================================================================
+
+@router.get("/github/callback")
+async def github_callback(code: str):
     """
-    Login with email and password.
+    Handle the OAuth callback from GitHub.
     
-    Returns JWT tokens for authenticated requests.
+    GitHub redirects the user here with a temporary authorization `code`.
+    We exchange this code for an access_token, then use it to fetch
+    the user's GitHub profile. Finally, we create a session and redirect
+    the user to the frontend with the session token.
+    
+    Flow:
+        code → access_token → user_profile → session_token → frontend redirect
     """
-    client = SupabaseClient.get_anon_client()
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
     
-    if not client:
-        raise HTTPException(
-            status_code=503,
-            detail="Authentication service not configured"
-        )
-    
-    try:
-        result = client.auth.sign_in_with_password({
-            "email": request.email,
-            "password": request.password
-        })
-        
-        if not result.user or not result.session:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid credentials"
-            )
-        
-        logger.info(f"User logged in: {request.email}")
-        
-        return AuthResponse(
-            access_token=result.session.access_token,
-            refresh_token=result.session.refresh_token,
-            user={
-                "id": result.user.id,
-                "email": result.user.email
+    # --- Exchange the code for an access_token ---
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(
+            GITHUB_TOKEN_URL,
+            json={
+                "client_id": settings.GITHUB_CLIENT_ID,
+                "client_secret": settings.GITHUB_CLIENT_SECRET,
+                "code": code,
             },
-            message="Login successful"
+            headers={"Accept": "application/json"},
         )
-        
-    except Exception as e:
-        logger.error(f"Login failed: {str(e)}")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
+    
+    token_data = token_response.json()
+    access_token = token_data.get("access_token")
+    
+    if not access_token:
+        error = token_data.get("error_description", "Unknown error")
+        logger.error(f"GitHub OAuth token exchange failed: {error}")
+        raise HTTPException(status_code=401, detail=f"GitHub auth failed: {error}")
+    
+    # --- Fetch the user's GitHub profile ---
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            GITHUB_USER_URL,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github.v3+json",
+            },
         )
+    
+    if user_response.status_code != 200:
+        raise HTTPException(status_code=401, detail="Failed to fetch GitHub user profile")
+    
+    github_user = user_response.json()
+    logger.info(f"GitHub OAuth successful for user: {github_user.get('login')}")
+    
+    # --- Create a session and redirect to frontend ---
+    session_token = create_session(github_user)
+    
+    # Redirect to the frontend with the token as a URL parameter
+    # The frontend JS will grab this token and store it in localStorage
+    frontend_url = f"{settings.FRONTEND_URL}?token={session_token}"
+    
+    return RedirectResponse(url=frontend_url)
 
+
+# =============================================================================
+# Step 3: Get the current logged-in user
+# =============================================================================
+
+@router.get("/me")
+async def get_current_user(user: dict = GitHubAuth):
+    """
+    Return the profile of the currently authenticated user.
+    
+    Requires Bearer token in Authorization header.
+    """
+    return {
+        "authenticated": True,
+        "user": user,
+    }
+
+
+# =============================================================================
+# Step 4: Logout
+# =============================================================================
 
 @router.post("/logout")
-async def logout(user: dict = UserAuth):
+async def logout(request: Request):
     """
-    Logout the current user.
-    
-    Invalidates the current session.
+    Destroy the current session and log the user out.
     """
-    client = SupabaseClient.get_client()
+    auth_header = request.headers.get("Authorization")
     
-    if client:
-        try:
-            client.auth.sign_out()
-        except Exception as e:
-            logger.warning(f"Logout error: {e}")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split("Bearer ")[1]
+        destroy_session(token)
     
     return {"message": "Logged out successfully"}
-
-
-@router.get("/me", response_model=UserProfile)
-async def get_current_user(user: dict = UserAuth):
-    """
-    Get current user's profile.
-    
-    Requires valid JWT token.
-    """
-    client = SupabaseClient.get_client()
-    
-    # Try to get extended profile
-    if client:
-        try:
-            result = client.table("user_profiles").select("*").eq("id", user["id"]).execute()
-            if result.data:
-                profile = result.data[0]
-                return UserProfile(
-                    id=user["id"],
-                    email=user["email"],
-                    full_name=profile.get("full_name"),
-                    phone_number=profile.get("phone_number"),
-                    role=profile.get("role", "user")
-                )
-        except Exception as e:
-            logger.warning(f"Failed to fetch profile: {e}")
-    
-    # Return basic info from JWT
-    return UserProfile(
-        id=user["id"],
-        email=user["email"],
-        role=user.get("role", "user")
-    )
-
-
-@router.put("/me")
-async def update_profile(
-    full_name: Optional[str] = None,
-    phone_number: Optional[str] = None,
-    user: dict = UserAuth
-):
-    """
-    Update current user's profile.
-    """
-    client = SupabaseClient.get_client()
-    
-    if not client:
-        raise HTTPException(
-            status_code=503,
-            detail="Database not configured"
-        )
-    
-    update_data = {}
-    if full_name is not None:
-        update_data["full_name"] = full_name
-    if phone_number is not None:
-        update_data["phone_number"] = phone_number
-    
-    if not update_data:
-        return {"message": "No updates provided"}
-    
-    try:
-        result = client.table("user_profiles").update(update_data).eq("id", user["id"]).execute()
-        return {"message": "Profile updated", "data": result.data}
-    except Exception as e:
-        logger.error(f"Profile update failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to update profile"
-        )
-
-
-@router.post("/refresh")
-async def refresh_token(refresh_token: str):
-    """
-    Refresh access token using refresh token.
-    """
-    client = SupabaseClient.get_anon_client()
-    
-    if not client:
-        raise HTTPException(
-            status_code=503,
-            detail="Authentication service not configured"
-        )
-    
-    try:
-        result = client.auth.refresh_session(refresh_token)
-        
-        if not result.session:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid refresh token"
-            )
-        
-        return {
-            "access_token": result.session.access_token,
-            "refresh_token": result.session.refresh_token,
-            "message": "Token refreshed"
-        }
-        
-    except Exception as e:
-        logger.error(f"Token refresh failed: {str(e)}")
-        raise HTTPException(
-            status_code=401,
-            detail="Failed to refresh token"
-        )

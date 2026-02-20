@@ -1,2 +1,2 @@
 # Middleware package
-from .auth import verify_service_api_key, verify_supabase_jwt, optional_auth, ServiceAuth, UserAuth, OptionalAuth
+from .auth import verify_github_session, verify_github_webhook_hmac, GitHubAuth, GitHubWebhookAuth
