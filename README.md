@@ -64,21 +64,21 @@ graph TD
     classDef db fill:#ff9a9e,stroke:#cc7377,stroke-width:2px,color:#000;
 
     %% Nodes
-    GH([GitHub Actions CI/CD]) ::: external
-    APP([Production Docker Apps]) ::: external
+    GH(["GitHub Actions CI/CD"]) ::: external
+    APP(["Production Docker Apps"]) ::: external
     
-    API[FastAPI Gateway] ::: core
-    ORCH{RCA Orchestrator} ::: core
+    API["FastAPI Gateway"] ::: core
+    ORCH{"RCA Orchestrator"} ::: core
     
-    A1[Log Agent (Regex Pre-filter)] ::: agent
-    A2[Commit Agent (Git Diff)] ::: agent
-    A3[Runbook Agent (RAG)] ::: agent
-    A4[Synthesizer Agent (LLM)] ::: agent
+    A1["Log Agent (Regex Pre-filter)"] ::: agent
+    A2["Commit Agent (Git Diff)"] ::: agent
+    A3["Runbook Agent (RAG)"] ::: agent
+    A4["Synthesizer Agent (LLM)"] ::: agent
     
-    VDB[(ChromaDB)] ::: db
-    LLM([Groq / Gemini API]) ::: external
-    UI([React Dashboard]) ::: external
-    PHONE([Twilio Voice Alert]) ::: external
+    VDB[("ChromaDB")] ::: db
+    LLM(["Groq / Gemini API"]) ::: external
+    UI(["React Dashboard"]) ::: external
+    PHONE(["Twilio Voice Alert"]) ::: external
 
     %% Edges
     GH -- "HMAC Webhook" --> API
