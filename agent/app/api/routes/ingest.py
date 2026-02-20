@@ -6,7 +6,7 @@ This is the core MVP3 feature that enables automatic RCA triggering.
 MVP4 adds deployment protection with GitHub Actions integration.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import logging
@@ -14,10 +14,11 @@ import time
 import uuid
 from datetime import datetime, timedelta
 
-from app.models.error_models import ErrorPayload, IngestResponse, DeploymentPayload, DeploymentResponse
+from app.models.error_models import ErrorPayload, IngestResponse, DeploymentPayload, DeploymentResponse, AgentLogPayload, AgentLogResponse
 from app.core.orchestrator import RCAOrchestrator
 from app.core.config.settings import settings
 from app.utils.github_api import GitHubClient
+from app.api.middleware.auth import GitHubWebhookAuth
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,7 +30,6 @@ github_client = GitHubClient()
 # In-memory storage for RCA reports (for dashboard display)
 RCA_HISTORY: List[Dict[str, Any]] = []
 MAX_HISTORY_SIZE = 50
-
 
 # =============================================================================
 # Deployment Watcher (MVP4)
@@ -111,10 +111,8 @@ class DeploymentWatcher:
             self.active_deployments[deployment_id]["errors_during_watch"].append(error_details)
             logger.warning(f"[DEPLOY] Error recorded for deployment {deployment_id}")
 
-
 # Global watcher instance
 deployment_watcher = DeploymentWatcher(watch_duration_minutes=5)
-
 
 @router.post("/ingest-error", response_model=IngestResponse)
 async def ingest_error(payload: ErrorPayload):
@@ -331,7 +329,7 @@ def _add_deployment_context_to_logs(log_text: str, deployment_context: Dict[str,
 # Deployment Notification Routes (MVP4)
 # =============================================================================
 
-@router.post("/notify-deployment", response_model=DeploymentResponse)
+@router.post("/notify-deployment", response_model=DeploymentResponse, dependencies=[GitHubWebhookAuth])
 async def notify_deployment(payload: DeploymentPayload):
     """
     MVP4 Deployment Notification Endpoint.
@@ -430,3 +428,47 @@ async def get_rca_history(limit: int = 20):
         "total": len(RCA_HISTORY),
         "reports": RCA_HISTORY[:limit]
     }
+
+
+# =============================================================================
+# Inbound Docker Agent Log Receiver
+# =============================================================================
+
+@router.post("/agent/logs/ingest", response_model=AgentLogResponse)
+async def ingest_agent_logs(payload: AgentLogPayload):
+    """
+    Endpoint for the lightweight OpsTron Docker Agent.
+    
+    Instead of polling user environments via dangerous socket access,
+    the remote agent securely POSTs streams of logs here.
+    """
+    start_time = time.time()
+    
+    logger.info(f"[DOCKER_AGENT] Received block from {payload.container_name} ({payload.container_id[:8]})")
+    
+    # Check if we should feed this into RCA
+    # If the user is in an active deployment watch, we check logs for errors
+    active_deployment = deployment_watcher.get_active_deployment()
+    
+    if active_deployment:
+        logger.info(f"[DOCKER_AGENT] Active deployment watch found. Analyzing {payload.container_name} logs.")
+        
+        # We simulate creating an ErrorPayload based on the raw logs
+        # The new LogAgent pre-filter will catch any actual errors within this payload
+        simulated_payload = ErrorPayload(
+            service=payload.container_name,
+            error=f"Uncaught issue in {payload.container_name}",
+            stacktrace="",
+            recent_logs=payload.logs.splitlines(),
+            env="production" # You can extend AgentLogPayload to pass env
+        )
+        
+        # We don't await this immediately so we don't block the agent from streaming
+        # In a real app, use Celery/BackgroundTasks here.
+        import asyncio
+        asyncio.create_task(ingest_error(simulated_payload))
+
+    processing_time = (time.time() - start_time) * 1000
+    logger.debug(f"[DOCKER_AGENT] Processed log chunk in {processing_time:.2f}ms")
+    
+    return AgentLogResponse(status="received", message=f"Processed chunk for {payload.container_id}")

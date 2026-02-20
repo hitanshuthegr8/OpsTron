@@ -223,3 +223,43 @@ class DeploymentResponse(BaseModel):
     message: str = Field(
         description="Human readable status message"
     )
+
+
+# =============================================================================
+# Docker Agent Models
+# =============================================================================
+
+class AgentLogPayload(BaseModel):
+    """
+    Payload from the lightweight OpsTron Docker Agent.
+    
+    The agent streams container logs to this endpoint.
+    """
+    
+    container_id: str = Field(
+        ...,
+        description="Docker container ID"
+    )
+    container_name: str = Field(
+        ...,
+        description="Docker container name",
+        example="frontend-api"
+    )
+    logs: str = Field(
+        ...,
+        description="Raw log output from the container"
+    )
+
+
+class AgentLogResponse(BaseModel):
+    """
+    Response from Docker agent log ingestion.
+    """
+    
+    status: str = Field(
+        description="Status: 'received', 'analyzing', or 'error'"
+    )
+    message: str = Field(
+        description="Human readable status message"
+    )
+

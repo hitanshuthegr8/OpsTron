@@ -1,4 +1,3 @@
-import docker
 import logging
 from typing import Optional
 
@@ -7,46 +6,30 @@ logger = logging.getLogger(__name__)
 class DockerService:
     """
     Service for interacting with Docker containers.
-    Used for 'Option 2' log fetching where the agent pulls logs directly.
+    
+    [DEPRECATED ARCHITECTURE - v3.0]
+    We no longer support or recommend pulling logs via remote Docker daemon socket
+    access due to extreme security vulnerabilities.
+    
+    [NEW ARCHITECTURE]
+    Users should now deploy the OpsTron lightweight container on their cluster.
+    That local container securely streams logs *outbound* to our `/agent/logs/ingest`
+    endpoint using the user's `OPSTRON_API_KEY`.
     """
     
     def __init__(self):
-        try:
-            self.client = docker.from_env()
-        except Exception as e:
-            logger.error(f"Failed to initialize Docker client: {e}")
-            self.client = None
+        logger.warning("DockerService pull architecture is deprecated. Please migrate to the OpsTron outbound log streaming agent.")
+        self.client = None
 
     def fetch_container_logs(self, container_id: str, tail: int = 100) -> str:
         """
-        Fetch the last N lines of logs from a specific container.
+        [DEPRECATED] Fetch the last N lines of logs directly.
         """
-        if not self.client:
-            return "Docker client not initialized."
-            
-        try:
-            container = self.client.containers.get(container_id)
-            logs = container.logs(tail=tail, stdout=True, stderr=True)
-            return logs.decode('utf-8')
-        except docker.errors.NotFound:
-            return f"Container {container_id} not found."
-        except Exception as e:
-            logger.error(f"Error fetching logs for container {container_id}: {e}")
-            return f"Error fetching logs: {str(e)}"
+        logger.error(f"Attempted to pull logs for {container_id} using deprecated architecture. This is disabled for security reasons.")
+        return "ERROR: Direct container polling is disabled. Please configure the OpsTron outbound streaming agent on your server."
 
     def get_container_id_by_name(self, name: str) -> Optional[str]:
         """
-        Find a container ID by its name or part of its name.
+        [DEPRECATED] Search for container IDs.
         """
-        if not self.client:
-            return None
-            
-        try:
-            containers = self.client.containers.list(all=True)
-            for container in containers:
-                if name in container.name:
-                    return container.id
-            return None
-        except Exception as e:
-            logger.error(f"Error searching for container {name}: {e}")
-            return None
+        return None
