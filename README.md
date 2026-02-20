@@ -1,330 +1,184 @@
-# ⚡ OpsTron - AI-Powered Root Cause Analysis
+<div align="center">
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:4facfe,100:00f2fe&height=200&section=header&text=OpsTron&fontSize=90&fontAlignY=38&desc=Your%20AI-Powered%20DevOps%20Companion&descAlignY=55&descAlign=62" width="100%" />
 
-An intelligent DevOps assistant that automatically analyzes runtime errors and provides actionable insights using AI.
+[![Typing SVG](https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=600&size=24&pause=1000&color=00F2FE&center=true&vCenter=true&width=600&lines=Catch+deployment+regressions;Automate+Root+Cause+Analysis;Resolve+incidents+with+AI;Ship+code+with+confidence)](https://git.io/typing-svg)
 
-## Key Features
+**Supercharge your incident response with LLM-powered telemetry, predictive analysis, and automated runbook matching.**
 
-- **Automated Error Ingestion** - Backend services POST errors directly to the agent
-- **AI-Powered Analysis** - Uses LLMs to understand errors and suggest fixes
-- **GitHub Integration** - Analyzes recent commits for potential causes
-- **Runbook Matching** - Finds relevant documentation automatically
-- **Real-time Dashboard** - Monitor errors and RCA reports in browser
-- **🚀 Deployment Protection (MVP4)** - Catches deployment regressions via GitHub Actions integration
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
----
+</div>
 
-## Project Structure
+<br />
 
-```
-opstron/
-├── agent/                      # RCA Agent Service (Port 8001)
-│   ├── api/                    # API Layer
-│   │   ├── __init__.py         # Router aggregation
-│   │   └── routes/             # Route handlers
-│   │       ├── health.py       # Health check endpoints
-│   │       ├── ingest.py       # Error ingestion (MVP3)
-│   │       ├── analyze.py      # Manual upload (MVP2)
-│   │       └── github.py       # GitHub configuration
-│   │
-│   ├── agents/                 # AI Agent Modules
-│   │   ├── log_agent.py        # Log analysis
-│   │   ├── commit_agent.py     # Git commit analysis
-│   │   ├── runbook_agent.py    # Runbook matching
-│   │   └── synthesizer_agent.py # RCA synthesis
-│   │
-│   ├── services/               # Business Logic
-│   │   └── rca_service.py      # RCA orchestration service
-│   │
-│   ├── models/                 # Data Models
-│   │   └── error_models.py     # Pydantic schemas
-│   │
-│   ├── config/                 # Configuration
-│   │   ├── settings.py         # App settings
-│   │   └── .env                # Environment variables
-│   │
-│   ├── db/                     # Database Layer
-│   │   └── chroma_store/       # Vector DB for runbooks
-│   │
-│   ├── tools/                  # Utilities
-│   │   ├── github_api.py       # GitHub client
-│   │   └── log_parser.py       # Log parsing utilities
-│   │
-│   ├── main.py                 # Application entry point
-│   ├── orchestrator.py         # Agent orchestration
-│   ├── llm.py                  # LLM client (Ollama/Gemini)
-│   └── schemas.py              # Legacy schemas
-│
-├── demo-backend/               # Demo Backend Service (Port 8000)
-│   ├── app.py                  # FastAPI demo service
-│   └── requirements.txt        # Dependencies
-│
-├── frontend/                   # Dashboard UI (Port 3000)
-│   ├── index.html              # Main HTML
-│   ├── src/
-│   │   ├── css/
-│   │   │   └── main.css        # Styles
-│   │   ├── js/
-│   │   │   └── app.js          # Application logic
-│   │   └── assets/             # Images, icons
-│   └── server.py               # Development server
-│
-├── runbooks/                   # Runbook Documents
-│   ├── api_timeout.md
-│   ├── db_deadlock.md
-│   └── service_down.md
-│
-└── docs/                       # Documentation
-    ├── MVP3_README.md          # MVP3 features detail
-    ├── QUICKSTART.md           # Getting started
-    ├── COMMANDS.md             # CLI commands
-    └── GEMINI_MIGRATION.md     # LLM setup guide
-```
+## 🌟 Why OpsTron?
+
+Modern microservices are complex, and pinpointing the exact codebase change that caused a production outage can take hours. **OpsTron cuts that time down to seconds.** 
+
+By ingesting real-time application logs, analyzing your latest Git commits, and querying your internal runbooks, OpsTron's orchestrator synthesizes an exact explanation of *what broke*, *why it broke*, and *how to fix it*. 
 
 ---
 
-## Quick Start
+## ✨ Core Features
 
-### 1. Clone and Setup
+<table>
+  <tr>
+    <td width="50%">
+      <h3>🛡️ Deployment Protection</h3>
+      <p>Seamlessly integrates with GitHub Actions via secure HMAC webhooks. OpsTron automatically enters "Watch Mode" during a deployment to catch immediate regressions.</p>
+    </td>
+    <td width="50%">
+      <h3>🧠 AI Root Cause Analysis</h3>
+      <p>Uses state-of-the-art LLMs (Groq/Gemini/Ollama) to parse dense stack traces, abstract syntax trees, and commit diffs to synthesize human-readable solutions.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>🐳 Autonomous Log Ingestion</h3>
+      <p>Utilize the lightweight <code>opstron_forwarder</code> sidecar to stream isolated Docker container logs directly into the analysis engine with intelligent Regex pre-filtering.</p>
+    </td>
+    <td width="50%">
+      <h3>📞 Critical Voice Alerts</h3>
+      <p>When a deployment drops the database, emails aren't enough. OpsTron integrates with Twilio TwiML to physically call on-call engineers for critical regressions.</p>
+    </td>
+  </tr>
+</table>
 
+---
+
+## 🏗️ High-Level Architecture
+
+<div align="center">
+
+```mermaid
+graph TD
+    %% Styling
+    classDef external fill:#1e1e1e,stroke:#333,stroke-width:2px,color:#fff;
+    classDef core fill:#00f2fe,stroke:#00a3cc,stroke-width:2px,color:#000;
+    classDef agent fill:#4facfe,stroke:#2b8ace,stroke-width:2px,color:#fff;
+    classDef db fill:#ff9a9e,stroke:#cc7377,stroke-width:2px,color:#000;
+
+    %% Nodes
+    GH([GitHub Actions CI/CD]) ::: external
+    APP([Production Docker Apps]) ::: external
+    
+    API[FastAPI Gateway] ::: core
+    ORCH{RCA Orchestrator} ::: core
+    
+    A1[Log Agent (Regex Pre-filter)] ::: agent
+    A2[Commit Agent (Git Diff)] ::: agent
+    A3[Runbook Agent (RAG)] ::: agent
+    A4[Synthesizer Agent (LLM)] ::: agent
+    
+    VDB[(ChromaDB)] ::: db
+    LLM([Groq / Gemini API]) ::: external
+    UI([React Dashboard]) ::: external
+    PHONE([Twilio Voice Alert]) ::: external
+
+    %% Edges
+    GH -- "HMAC Webhook" --> API
+    APP -- "POST /agent/logs" --> API
+    
+    API --> ORCH
+    
+    ORCH --> A1
+    ORCH --> A2
+    ORCH --> A3
+    
+    A3 <--> VDB
+    
+    A1 --> A4
+    A2 --> A4
+    A3 --> A4
+    
+    A4 <--> LLM
+    A4 --> ORCH
+    
+    ORCH --> UI
+    ORCH -- "If Critical" --> PHONE
+```
+
+</div>
+
+---
+
+## 🚀 Quickstart Guide
+
+Get OpsTron running locally in under 60 seconds.
+
+### 1. Clone & Install
 ```bash
-git clone https://github.com/yourusername/opstron.git
-cd opstron
+git clone https://github.com/hitanshuthegr8/OpsTron.git
+cd OpsTron/agent
+python -m venv venv
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-### 2. Start the Agent (Terminal 1)
+### 2. Configure Environment
+Rename `.env.example` to `.env` and fill in your details. At an absolute minimum, you need an LLM API key.
+```env
+# Get a free fast key from console.groq.com
+GEMINI_API_KEY="your_groq_or_gemini_key"
+```
 
-```powershell
-cd agent
-.\venv\Scripts\Activate.ps1
+### 3. Launch the Core
+```bash
 python main.py
 ```
-
-### 3. Start Demo Backend (Terminal 2)
-
-```powershell
-cd demo-backend
-.\venv\Scripts\Activate.ps1
-python -m uvicorn app:app --port 8000
-```
-
-### 4. Start Frontend (Terminal 3)
-
-```powershell
-cd frontend
-python server.py
-```
-
-### 5. Open Dashboard
-
-Navigate to **http://localhost:3000**
+*OpsTron is now listening on port `8001`.*
 
 ---
 
-## API Reference
+## 🔒 Securing Your Deployments (GitHub Actions)
 
-### Agent API (Port 8001)
+To enable Deployment Protection, you need to tell GitHub to securely ping OpsTron when a push happens.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | System health check |
-| `/ingest-error` | POST | Automated error ingestion |
-| `/analyze` | POST | Manual log file upload |
-| `/config/github` | GET/POST | GitHub configuration |
-| `/commits` | GET | Fetch recent commits |
-| `/docs` | GET | Interactive API documentation |
+1. Generate a secure secret: `openssl rand -hex 32`
+2. Add this secret to your `agent/.env` as `WEBHOOK_SECRET="your_secret"`.
+3. In your GitHub Repository, go to **Settings > Secrets and variables > Actions**.
+4. Add `OPSTRON_WEBHOOK_SECRET` (the secret from step 1).
+5. Add `OPSTRON_BACKEND_URL` (the public URL/ngrok of your `main.py` server).
 
-### Demo Backend API (Port 8000)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Backend health check |
-| `/trigger-error` | GET | Trigger test error |
-| `/checkout` | POST | Demo endpoint (random errors) |
-| `/logs` | GET | View log buffer |
+The included workflow (`.github/workflows/opstron_notify.yml`) will now automatically arm the defense grid on every push!
 
 ---
 
-## 🚀 Deployment Protection (MVP4)
+## 🐳 Ingesting Docker Logs
 
-OpsTron can automatically detect errors caused by recent code deployments using GitHub Actions integration.
+You don't need to expose your Docker daemon. OpsTron uses a secure push-based model.
 
-### How It Works
-
-1. **Developer pushes code** → GitHub Actions triggers
-2. **GitHub notifies OpsTron** → Agent enters "Watch Mode" for 5 minutes
-3. **If error occurs during watch** → OpsTron fetches the commit diff
-4. **AI correlates error with code changes** → Provides rollback recommendation
-
-### Setup GitHub Actions
-
-The workflow file is already created at `.github/workflows/opstron_notify.yml`.
-
-**Add the secret to your repository:**
-
-1. Go to your GitHub repo → **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Name: `OPSTRON_URL`
-4. Value: Your OpsTron server URL (e.g., `http://your-server-ip:8001`)
-
-### Deployment Protection API
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/notify-deployment` | POST | Called by GitHub Actions on push |
-| `/deployment-status` | GET | Check if watch mode is active |
-| `/deployment-history` | GET | View recent deployments and errors |
-
-### Example: Deployment Notification
-
+Run the lightweight forwarder script alongside your production apps:
 ```bash
-# Sent automatically by GitHub Actions:
-curl -X POST http://localhost:8001/notify-deployment \
-  -H "Content-Type: application/json" \
-  -d '{
-    "commit_sha": "a1b2c3d4e5f6...",
-    "repository": "hitanshuthegr8/OpsTron",
-    "author": "hitanshuthegr8",
-    "message": "fix: updated database logic",
-    "branch": "main"
-  }'
+# Set environment variables for the target container
+export OPSTRON_URL="http://your-opstron-server:8001"
+export CONTAINER_NAME="my-crashing-backend"
+
+# Start the forwarder
+python agent/opstron_forwarder.py
 ```
-
-### Check Deployment Status
-
-```bash
-curl http://localhost:8001/deployment-status
-
-# Response when watching:
-{
-  "status": "watching",
-  "active_deployment": {
-    "commit_sha": "a1b2c3d",
-    "author": "hitanshuthegr8",
-    "watch_until": "2024-01-15T10:35:00Z"
-  }
-}
-```
+*The forwarder uses lightweight Regex pre-filtering locally so it doesn't saturate your network sending non-error logs.*
 
 ---
 
-## Configuration
+## 🌐 API Reference
 
-### Environment Variables
-
-Create `agent/config/.env`:
-
-```env
-# LLM Configuration
-GEMINI_API_KEY=your_key_here      # For cloud LLM (optional)
-
-# GitHub Integration
-GITHUB_TOKEN=ghp_xxxxx            # Personal access token
-DEFAULT_REPO=owner/repo           # Default repository
-
-# Database
-CHROMA_PERSIST_DIR=./db/chroma_store
-```
-
-### LLM Backend
-
-OpsTron supports two LLM backends:
-
-| Backend | Pros | Cons |
-|---------|------|------|
-| **Ollama (Local)** | Free, private, no rate limits | Slower, requires GPU |
-| **Gemini (Cloud)** | Fast, high quality | Rate limits, API costs |
-
-The agent automatically detects Ollama and uses it if available.
+| Method | Endpoint | Description | Security |
+|--------|----------|-------------|----------|
+| `GET` | `/health` | Core system pulse check | None |
+| `POST` | `/analyze-commit` | Manually triage a specific SHA | GitHub Auth |
+| `POST` | `/notify-deployment`| CI/CD Webhook Entrypoint | HMAC-SHA256 |
+| `POST` | `/agent/logs/ingest`| Outbound agent streaming | Service API Key |
+| `GET` | `/auth/github/login`| Entrypoint for user dashboard session | OAuth2 |
 
 ---
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        FRONTEND                              │
-│                   (Dashboard UI - Port 3000)                 │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                         AGENT                                │
-│                   (RCA System - Port 8001)                   │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                   API Layer                          │    │
-│  │  /health  /ingest-error  /analyze  /config/github   │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                          │                                   │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                  Orchestrator                        │    │
-│  │         Coordinates all agent activities             │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                          │                                   │
-│  ┌──────────┬──────────┬──────────┬──────────┐              │
-│  │ LogAgent │CommitAgent│RunbookAgent│Synthesizer│          │
-│  └──────────┴──────────┴──────────┴──────────┘              │
-│                          │                                   │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │              LLM Client (Ollama/Gemini)             │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                              ▲
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│                      DEMO BACKEND                            │
-│                   (Test Service - Port 8000)                 │
-│                                                              │
-│  Error Middleware → Log Buffer → POST to /ingest-error      │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Testing
-
-```powershell
-# Trigger a test error (automatically analyzed)
-curl http://localhost:8000/trigger-error
-
-# Check agent health
-curl http://localhost:8001/health
-
-# Configure GitHub
-curl -X POST http://localhost:8001/config/github `
-  -H "Content-Type: application/json" `
-  -d '{"token":"ghp_xxx","repo":"owner/repo"}'
-
-# Fetch commits
-curl "http://localhost:8001/commits?limit=5"
-```
-
----
-
-## Technologies
-
-- **Backend**: Python 3.12, FastAPI
-- **Frontend**: HTML5, CSS3, JavaScript (Vanilla)
-- **LLM**: Ollama (Phi-3) / Google Gemini
-- **Vector DB**: ChromaDB
-- **HTTP Client**: httpx
-
----
-
-## License
-
-MIT License - See [LICENSE](LICENSE) for details.
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
-# test
+<div align="center">
+  <h3>Built with ❤️ by the OpsTron Team</h3>
+  <p>If you like this project, consider giving it a ⭐ on GitHub!</p>
+</div>
