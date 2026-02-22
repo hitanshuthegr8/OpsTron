@@ -1,0 +1,14 @@
+name: OpsTron Notify
+on: [push]
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify OpsTron
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ secrets.OPSTRON_BACKEND_URL }}
+          method: 'POST'
+          # Note: The backend expects a signature to verify the request
+          customHeaders: '{"x-hub-signature-256": "sha256=${{ secrets.OPSTRON_WEBHOOK_SECRET }}"}'
+          data: '{"event": "push", "repository": "${{ github.repository }}", "sha": "${{ github.sha }}"}'

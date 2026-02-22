@@ -38,26 +38,42 @@ class RCAOrchestrator:
         
         # Step 1: Extract log signals
         logger.info("Step 1: Analyzing logs")
-        log_analysis = await self.log_agent.analyze(log_text)
+        try:
+            log_analysis = await self.log_agent.analyze(log_text)
+        except Exception as e:
+            logger.error(f"LogAgent failed: {e}", exc_info=True)
+            raise e
         
         # Step 2: Fetch recent commits
         logger.info("Step 2: Fetching commits")
-        commit_analysis = await self.commit_agent.analyze(repo)
+        try:
+            commit_analysis = await self.commit_agent.analyze(repo)
+        except Exception as e:
+            logger.error(f"CommitAgent failed: {e}", exc_info=True)
+            commit_analysis = {"error": str(e), "commits": []}
         
         # Step 3: Search runbooks
         logger.info("Step 3: Searching runbooks")
-        error_signals = log_analysis.get('error_signals', [])
-        runbook_results = await self.runbook_agent.search(error_signals)
+        try:
+            error_signals = log_analysis.get('error_signals', [])
+            runbook_results = await self.runbook_agent.search(error_signals)
+        except Exception as e:
+            logger.error(f"RunbookAgent failed: {e}", exc_info=True)
+            runbook_results = []
         
         # Step 4: Synthesize RCA
         logger.info("Step 4: Synthesizing root cause analysis")
-        rca_report = await self.synthesizer_agent.synthesize(
-            service=service,
-            log_analysis=log_analysis,
-            commit_analysis=commit_analysis,
-            runbook_results=runbook_results,
-            metadata=metadata  # MVP3: Pass metadata for enhanced context
-        )
+        try:
+            rca_report = await self.synthesizer_agent.synthesize(
+                service=service,
+                log_analysis=log_analysis,
+                commit_analysis=commit_analysis,
+                runbook_results=runbook_results,
+                metadata=metadata  # MVP3: Pass metadata for enhanced context
+            )
+        except Exception as e:
+            logger.error(f"SynthesizerAgent failed: {e}", exc_info=True)
+            raise e
         
         logger.info("RCA pipeline completed")
         

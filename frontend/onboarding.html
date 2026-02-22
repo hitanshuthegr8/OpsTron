@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsTron - Setup</title>
+    <link rel="stylesheet" href="src/css/main.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background: var(--bg-primary);
+            padding: 0;
+            margin: 0;
+        }
+
+        .progress-bar {
+            height: 3px;
+            background: var(--bg-secondary);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 200;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            transition: width .5s ease;
+        }
+
+        .onboard-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 1.25rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            position: sticky;
+            top: 3px;
+            z-index: 100;
+        }
+
+        .onboard-header .logo {
+            gap: 8px;
+        }
+
+        .onboard-header .logo-icon {
+            font-size: 22px;
+        }
+
+        .onboard-header .logo-text {
+            font-size: 18px;
+        }
+
+        .step-pills {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .pill {
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: .8rem;
+            font-weight: 500;
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }
+
+        .pill.active {
+            background: var(--accent-gradient);
+            color: white;
+            border-color: transparent;
+        }
+
+        .pill.done {
+            background: rgba(16, 185, 129, .15);
+            color: var(--success);
+            border-color: var(--success);
+        }
+
+        .page-body {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 3rem 2rem 6rem;
+        }
+
+        .step-view {
+            display: none;
+        }
+
+        .step-view.active {
+            display: block;
+        }
+
+        .step-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: .5rem;
+        }
+
+        .step-subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        .info-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 1.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-card h3 {
+            font-size: 1rem;
+            margin-bottom: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ---- Repo Picker ---- */
+        .repo-loading {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-secondary);
+            padding: 1rem 0;
+        }
+
+        .repos-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 360px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .repo-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            background: var(--bg-tertiary);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: all .2s ease;
+        }
+
+        .repo-card:hover {
+            background: var(--bg-hover);
+            border-color: rgba(99, 102, 241, .3);
+        }
+
+        .repo-card.selected {
+            border-color: var(--accent-primary);
+            background: rgba(99, 102, 241, .08);
+        }
+
+        .repo-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .repo-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .repo-name {
+            font-weight: 600;
+            font-size: .95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .repo-desc {
+            font-size: .8rem;
+            color: var(--text-muted);
+            margin-top: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .repo-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: .75rem;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .lang-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            flex-shrink: 0;
+        }
+
+        .private-badge {
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(245, 158, 11, .15);
+            color: #fbbf24;
+            font-size: .7rem;
+            font-weight: 600;
+        }
+
+        .selected-banner {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            background: rgba(99, 102, 241, .1);
+            border: 1px solid rgba(99, 102, 241, .3);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-top: 1rem;
+        }
+
+        .selected-banner.visible {
+            display: flex;
+        }
+
+        .selected-repo-name {
+            font-weight: 600;
+            color: var(--accent-primary);
+        }
+
+        /* ---- Connect button states ---- */
+        #connect-btn {
+            min-width: 180px;
+            justify-content: center;
+        }
+
+        #connect-btn:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* ---- Success state ---- */
+        .success-card {
+            background: rgba(16, 185, 129, .08);
+            border: 1px solid rgba(16, 185, 129, .3);
+            border-radius: 14px;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .success-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .success-card h3 {
+            color: var(--success);
+            margin-bottom: .5rem;
+        }
+
+        .success-card p {
+            color: var(--text-secondary);
+            font-size: .9rem;
+        }
+
+        /* ---- Docker step ---- */
+        .steps-list {
+            display: flex;
+            flex-direction: column;
+            gap: .75rem;
+            list-style: none;
+        }
+
+        .steps-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: .9rem;
+            color: var(--text-secondary);
+        }
+
+        .step-num {
+            min-width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--accent-gradient);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: .75rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .code-wrap {
+            position: relative;
+            margin: 1rem 0;
+        }
+
+        .code-block {
+            background: #0a0a1a;
+            border: 1px solid rgba(99, 102, 241, .3);
+            border-radius: 10px;
+            padding: 1.25rem;
+            font-family: 'Consolas', monospace;
+            font-size: .85rem;
+            color: #a0aec0;
+            white-space: pre;
+            overflow-x: auto;
+            line-height: 1.6;
+        }
+
+        .code-block .kw {
+            color: #ed64a6;
+        }
+
+        .code-block .st {
+            color: #68d391;
+        }
+
+        .code-block .cm {
+            color: #4a5568;
+            font-style: italic;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(99, 102, 241, .2);
+            border: 1px solid rgba(99, 102, 241, .4);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: .75rem;
+            font-family: inherit;
+            transition: background .2s;
+        }
+
+        .copy-btn:hover {
+            background: rgba(99, 102, 241, .4);
+        }
+
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, .1);
+            border-top-color: var(--accent-primary);
+            animation: spin 1s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .bottom-nav .info {
+            color: var(--text-muted);
+            font-size: .875rem;
+        }
+
+        .nav-right {
+            display: flex;
+            gap: 10px;
+        }
+
+        .alert {
+            background: rgba(245, 158, 11, .1);
+            border: 1px solid rgba(245, 158, 11, .3);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            font-size: .875rem;
+            color: #fbbf24;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="progress-bar">
+        <div class="progress-fill" id="progress" style="width:33%"></div>
+    </div>
+
+    <header class="onboard-header">
+        <div class="logo">
+            <span class="logo-icon">⚡</span>
+            <span class="logo-text">OpsTron</span>
+        </div>
+        <div class="step-pills">
+            <div class="pill active" id="pill-1">1. Connect Repo</div>
+            <div class="pill" id="pill-2">2. Docker Agent</div>
+            <div class="pill" id="pill-3">3. Done</div>
+        </div>
+    </header>
+
+    <div class="page-body">
+
+        <!-- ============ STEP 1: Repo Picker ============ -->
+        <div class="step-view active" id="step-1">
+            <p class="step-title">Connect a Repository</p>
+            <p class="step-subtitle">OpsTron watches for pushes to your repo. Select one below and we'll install the
+                webhook automatically — no YAML files, no manual setup.</p>
+
+            <div class="info-card">
+                <h3>📦 Your GitHub Repositories</h3>
+
+                <div class="repo-loading" id="repo-loading">
+                    <div class="spinner"></div>
+                    <span>Loading your repositories...</span>
+                </div>
+
+                <div class="repos-grid" id="repos-grid" style="display:none"></div>
+
+                <div class="selected-banner" id="selected-banner">
+                    <span style="font-size:1.3rem">✅</span>
+                    <div>
+                        <div style="font-size:.8rem;color:var(--text-muted);">Selected repo</div>
+                        <div class="selected-repo-name" id="selected-repo-name">—</div>
+                    </div>
+                </div>
+
+                <div id="webhook-success" style="display:none; margin-top:1rem;">
+                    <div class="success-card">
+                        <div class="success-icon">🔗</div>
+                        <h3>Webhook Installed!</h3>
+                        <p id="success-msg">OpsTron will now receive a notification every time code is pushed.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-card" id="url-card">
+                <h3>🌐 Your Backend's Public URL</h3>
+                <p style="color:var(--text-secondary);font-size:.875rem;margin-bottom:1rem;">
+                    GitHub needs to reach your backend to send push notifications. For local development, use
+                    <strong>ngrok</strong> to create a public tunnel.
+                </p>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input class="input" id="public-url-input" type="url"
+                        placeholder="https://xxxx.ngrok.io  (or your deployed server URL)"
+                        style="flex:1;min-width:220px;font-size:.875rem;" oninput="updateWebhookUrl(this.value)" />
+                    <button class="btn btn-secondary btn-sm" onclick="useNgrokHelp()">How to get ngrok?</button>
+                </div>
+                <span id="url-hint" style="display:block;margin-top:8px;font-size:.8rem;color:var(--text-muted);">
+                    Leave blank to register the webhook as <em>inactive</em> (you can enable it from GitHub Settings →
+                    Webhooks later).
+                </span>
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button class="btn btn-primary" id="connect-btn" onclick="installWebhook()" disabled>
+                    Connect OpsTron
+                </button>
+                <span id="connect-status" style="color:var(--text-muted);font-size:.875rem;"></span>
+            </div>
+        </div>
+
+
+        <!-- ============ STEP 2: Docker Agent ============ -->
+        <div class="step-view" id="step-2">
+            <p class="step-title">Install the Log Forwarder</p>
+            <p class="step-subtitle">This lightweight sidecar reads your container logs and streams errors to OpsTron's
+                AI engine in real-time. No inbound access required.</p>
+
+            <div class="info-card">
+                <h3>🐳 Docker Compose (Recommended)</h3>
+                <p style="color:var(--text-secondary);font-size:.9rem;margin-bottom:1rem;">Add this service to your
+                    existing <code>docker-compose.yml</code>:</p>
+                <div class="code-wrap">
+                    <button class="copy-btn" onclick="copyCode('dc-code')">Copy</button>
+                    <div class="code-block" id="dc-code"> <span class="kw">opstron-forwarder</span>:
+                        <span class="kw">image</span>: python:3.12-slim
+                        <span class="kw">volumes</span>:
+                        - /var/run/docker.sock:/var/run/docker.sock:ro
+                        - ./opstron_forwarder.py:/app/opstron_forwarder.py
+                        <span class="kw">environment</span>:
+                        OPSTRON_BACKEND_URL: <span class="st">"http://your-opstron-server:8001/agent/logs/ingest"</span>
+                        OPSTRON_API_KEY: <span class="st">"your_api_key"</span>
+                        <span class="kw">command</span>: sh -c "pip install requests docker -q && python
+                        /app/opstron_forwarder.py"
+                        <span class="kw">restart</span>: unless-stopped
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <h3>🖥️ Or run directly on your server</h3>
+                <div class="code-wrap">
+                    <button class="copy-btn" onclick="copyCode('direct-code')">Copy</button>
+                    <div class="code-block" id="direct-code"><span class="cm"># Download the forwarder</span>
+                        curl -O https://raw.githubusercontent.com/hitanshuthegr8/OpsTron/main/agent/opstron_forwarder.py
+                        pip install requests docker
+
+                        <span class="cm"># Run it</span>
+                        <span class="kw">export</span> OPSTRON_BACKEND_URL=<span
+                            class="st">"http://your-opstron-server:8001/agent/logs/ingest"</span>
+                        <span class="kw">export</span> OPSTRON_API_KEY=<span class="st">"your_api_key"</span>
+                        python opstron_forwarder.py
+                    </div>
+                </div>
+                <div class="alert">⚠️ Replace <code>your-opstron-server</code> with the public URL or IP of the machine
+                    running OpsTron.</div>
+            </div>
+
+            <div style="margin-top:.5rem;">
+                <button class="btn btn-secondary" onclick="simulateDockerConnect()">
+                    🧪 Simulate Connection (for local testing)
+                </button>
+            </div>
+        </div>
+
+        <!-- ============ STEP 3: Done ============ -->
+        <div class="step-view" id="step-3">
+            <div style="text-align:center; padding: 3rem 1rem;">
+                <div style="font-size:5rem;margin-bottom:1.5rem;">🎉</div>
+                <p class="step-title" style="text-align:center;">You're all set!</p>
+                <p class="step-subtitle" style="text-align:center;max-width:420px;margin:0 auto 2rem;">
+                    OpsTron is now monitoring your infrastructure. Push a commit — if anything crashes, our AI will
+                    analyze it and show the full RCA on your dashboard.
+                </p>
+                <a href="index.html" class="btn btn-primary" style="font-size:1rem;padding:14px 32px;"
+                    onclick="localStorage.setItem('setup_done','true')">
+                    Go to Dashboard →
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <div class="bottom-nav" id="bottom-nav">
+        <span class="info" id="step-info">Step 1 of 2: Select a repo and connect OpsTron</span>
+        <div class="nav-right">
+            <button class="btn btn-secondary" id="btn-back" onclick="prevStep()" style="display:none">← Back</button>
+            <button class="btn btn-primary" id="btn-next" onclick="nextStep()" disabled>Next: Docker Setup →</button>
+        </div>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <script>
+        // ---- Config ----
+        const BACKEND = 'http://localhost:8001';
+        let opsToken = localStorage.getItem('ops_token') || '';
+
+        // ---- State ----
+        let currentStep = 1;
+        let selectedRepo = null;    // { owner, repo, full_name }
+        let webhookInstalled = false;
+
+        // ---- Step navigation ----
+        const stepInfo = {
+            1: 'Step 1 of 2: Select a repo and connect OpsTron',
+            2: 'Step 2 of 2: Install the Docker log forwarder',
+            3: 'Setup complete!'
+        };
+
+        function showStep(n) {
+            document.querySelectorAll('.step-view').forEach(s => s.classList.remove('active'));
+            document.getElementById(`step-${n}`).classList.add('active');
+            document.querySelectorAll('.pill').forEach((p, i) => {
+                p.classList.remove('active', 'done');
+                if (i + 1 < n) p.classList.add('done');
+                if (i + 1 === n) p.classList.add('active');
+            });
+            document.getElementById('progress').style.width = n === 3 ? '100%' : `${Math.round((n / 3) * 100)}%`;
+            document.getElementById('step-info').textContent = stepInfo[n];
+            document.getElementById('btn-back').style.display = (n > 1 && n <= 2) ? 'inline-flex' : 'none';
+            if (n > 2) {
+                document.getElementById('bottom-nav').style.display = 'none';
+            } else {
+                document.getElementById('btn-next').textContent = n === 1 ? 'Next: Docker Setup →' : 'Continue →';
+                document.getElementById('btn-next').disabled = (n === 1 && !webhookInstalled);
+            }
+        }
+
+        function nextStep() { currentStep++; showStep(currentStep); }
+        function prevStep() { currentStep--; showStep(currentStep); }
+
+        // ---- Load repos ----
+        async function loadRepos() {
+            try {
+                const res = await fetch(`${BACKEND}/integrations/repos`, {
+                    headers: { 'Authorization': `Bearer ${opsToken}` }
+                });
+                if (res.status === 401) {
+                    // Session expired (backend restarted). Clear stale token and go back to login.
+                    localStorage.removeItem('ops_token');
+                    localStorage.removeItem('setup_done');
+                    document.getElementById('repo-loading').innerHTML =
+                        `<span style="color:var(--warning)">⚠️ Session expired. <a href="login.html" style="color:var(--accent-primary)">Click here to log in again.</a></span>`;
+                    return;
+                }
+                if (!res.ok) throw new Error(await res.text());
+                const { repos } = await res.json();
+
+                document.getElementById('repo-loading').style.display = 'none';
+                const grid = document.getElementById('repos-grid');
+                grid.style.display = 'flex';
+
+                if (!repos.length) {
+                    grid.innerHTML = `<div style="color:var(--text-muted);padding:1rem 0">No repositories found on your GitHub account.</div>`;
+                    return;
+                }
+
+                grid.innerHTML = repos.map(r => `
+                <div class="repo-card" id="rc-${r.id}" onclick="selectRepo(${r.id}, '${r.owner}', '${r.name}', '${r.full_name}')">
+                    <span class="repo-icon">${r.private ? '🔒' : '📂'}</span>
+                    <div class="repo-info">
+                        <div class="repo-name">${r.full_name}</div>
+                        <div class="repo-desc">${r.description || 'No description'}</div>
+                    </div>
+                    <div class="repo-meta">
+                        ${r.private ? '<span class="private-badge">Private</span>' : ''}
+                        <span class="lang-dot" style="background:${langColor(r.language)}"></span>
+                        <span>${r.language}</span>
+                        ${r.stars > 0 ? `<span>⭐ ${r.stars}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+            } catch (err) {
+                document.getElementById('repo-loading').innerHTML = `<span style="color:var(--error)">❌ Failed to load repos: ${err.message}</span>`;
+            }
+        }
+
+
+        function langColor(lang) {
+            const map = { JavaScript: '#f7df1e', Python: '#3572A5', TypeScript: '#2b7489', Go: '#00ADD8', Rust: '#dea584', Java: '#b07219', 'C++': '#f34b7d' };
+            return map[lang] || '#6366f1';
+        }
+
+        function selectRepo(id, owner, name, fullName) {
+            document.querySelectorAll('.repo-card').forEach(c => c.classList.remove('selected'));
+            document.getElementById(`rc-${id}`).classList.add('selected');
+            selectedRepo = { id, owner, repo: name, full_name: fullName };
+            document.getElementById('selected-repo-name').textContent = fullName;
+            document.getElementById('selected-banner').classList.add('visible');
+            document.getElementById('connect-btn').disabled = false;
+            document.getElementById('connect-status').textContent = '';
+        }
+
+        // ---- Install webhook ----
+        async function installWebhook() {
+            if (!selectedRepo) return;
+
+            const btn = document.getElementById('connect-btn');
+            const status = document.getElementById('connect-status');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner" style="border-top-color:white"></div> Connecting...';
+            status.textContent = '';
+
+            try {
+                const res = await fetch(`${BACKEND}/integrations/install-webhook`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${opsToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        owner: selectedRepo.owner,
+                        repo: selectedRepo.repo,
+                        webhook_url: getWebhookUrl(),
+                    }),
+                });
+
+                if (res.status === 401) {
+                    localStorage.removeItem('ops_token');
+                    throw new Error('Session expired. Please click "Go Back" and sign in with GitHub again.');
+                }
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Unknown error');
+
+                // Show success
+                webhookInstalled = true;
+                document.getElementById('webhook-success').style.display = 'block';
+                document.getElementById('success-msg').textContent = data.message;
+                document.getElementById('btn-next').disabled = false;
+                btn.innerHTML = '✅ Connected!';
+                btn.style.background = 'rgba(16,185,129,.2)';
+                toast(data.message, 'success');
+
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Connect OpsTron';
+                status.textContent = `❌ ${err.message}`;
+                toast(`Failed: ${err.message}`, 'error');
+            }
+        }
+
+        // ---- Public URL helpers ----
+        function getWebhookUrl() {
+            const input = document.getElementById('public-url-input').value.trim();
+            const base = input.replace(/\/$/, '') || BACKEND;  // fallback to localhost
+            return `${base}/notify-deployment`;
+        }
+
+        function updateWebhookUrl(val) {
+            const hint = document.getElementById('url-hint');
+            if (val.trim()) {
+                hint.textContent = `Webhook will be set to: ${val.replace(/\/$/, '')}/notify-deployment`;
+                hint.style.color = 'var(--success)';
+            } else {
+                hint.textContent = 'Leave blank to register webhook as inactive (enable from GitHub Settings → Webhooks later).';
+                hint.style.color = 'var(--text-muted)';
+            }
+        }
+
+        function useNgrokHelp() {
+            toast('Run:  ngrok http 8001  — then paste the https URL above.', 'info');
+        }
+
+        function simulateDockerConnect() {
+            toast('Docker agent connected!', 'success');
+            setTimeout(() => { currentStep = 3; showStep(3); }, 800);
+        }
+
+        // ---- Utilities ----
+        function copyCode(id) {
+            navigator.clipboard.writeText(document.getElementById(id).innerText);
+            toast('Copied!', 'success');
+        }
+
+        function toast(msg, type = 'info') {
+            const c = document.getElementById('toast-container');
+            const t = document.createElement('div');
+            t.className = `toast ${type}`;
+            t.textContent = msg;
+            c.appendChild(t);
+            setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(100px)'; setTimeout(() => t.remove(), 300); }, 3500);
+        }
+
+        // ---- Init ----
+        (function init() {
+            // Capture token from GitHub OAuth redirect
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('token');
+            if (token) {
+                localStorage.setItem('ops_token', token);
+                opsToken = token; // Update the in-memory variable for immediate API requests
+                window.history.replaceState({}, document.title, window.location.pathname);
+                toast('GitHub login successful! 🎉 Now connect a repo.', 'success');
+            }
+
+            if (!opsToken) {
+                toast('Sign in with GitHub first to connect a repo.', 'info');
+            }
+
+            // Load repos immediately
+            loadRepos();
+        })();
+    </script>
+</body>
+
+</html>

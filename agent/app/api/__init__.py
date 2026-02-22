@@ -7,7 +7,7 @@ This package contains all API route handlers organized by feature.
 from fastapi import APIRouter
 
 # Import routers from submodules
-from .routes import health, ingest, analyze, github, auth
+from .routes import health, ingest, analyze, github, auth, integrations
 
 # Create main API router
 api_router = APIRouter()
@@ -18,6 +18,8 @@ api_router.include_router(ingest.router, tags=["Error Ingestion"])
 api_router.include_router(analyze.router, tags=["Manual Analysis"])
 api_router.include_router(github.router, prefix="/config", tags=["Configuration"])
 api_router.include_router(auth.router, tags=["Authentication"])
+api_router.include_router(integrations.router, tags=["Integrations"])
+
 
 __all__ = ["api_router"]
 

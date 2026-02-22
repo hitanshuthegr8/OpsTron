@@ -1,0 +1,21 @@
+ M .github/workflows/opstron_notify.yml
+ M agent/app/api/middleware/__init__.py
+ M agent/app/api/middleware/auth.py
+ M agent/app/api/routes/auth.py
+ M agent/app/api/routes/ingest.py
+ M agent/app/core/agents/log_agent.py
+ M agent/app/core/config/settings.py
+ M agent/app/core/orchestrator.py
+ M agent/app/models/error_models.py
+ M agent/app/services/__init__.py
+ M agent/app/services/docker_service.py
+ M agent/app/utils/github_api.py
+ M docs/QUICKSTART.md
+?? agent/app/services/twilio_service.py
+?? agent/get_git_status.py
+?? agent/opstron_forwarder.py
+?? agent/test_import.py
+?? agent/test_ingestion.py
+?? agent/test_output.txt
+?? agent/test_webhook.py
+?? git_status_output.txt

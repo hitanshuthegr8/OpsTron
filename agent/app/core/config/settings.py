@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # LLM Configuration
     # ==========================================================================
     GEMINI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     
     # ==========================================================================
     # GitHub Integration

@@ -54,7 +54,7 @@ async def github_login():
     github_redirect = (
         f"{GITHUB_AUTHORIZE_URL}"
         f"?client_id={settings.GITHUB_CLIENT_ID}"
-        f"&scope=read:user user:email"
+        f"&scope=read:user user:email repo"
     )
     
     return RedirectResponse(url=github_redirect)
@@ -117,11 +117,10 @@ async def github_callback(code: str):
     logger.info(f"GitHub OAuth successful for user: {github_user.get('login')}")
     
     # --- Create a session and redirect to frontend ---
-    session_token = create_session(github_user)
+    session_token = create_session(github_user, access_token)
     
-    # Redirect to the frontend with the token as a URL parameter
-    # The frontend JS will grab this token and store it in localStorage
-    frontend_url = f"{settings.FRONTEND_URL}?token={session_token}"
+    # Redirect to the onboarding page with the session token
+    frontend_url = f"{settings.FRONTEND_URL}/onboarding.html?token={session_token}"
     
     return RedirectResponse(url=frontend_url)
 

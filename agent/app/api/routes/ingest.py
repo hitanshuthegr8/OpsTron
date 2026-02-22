@@ -330,39 +330,85 @@ def _add_deployment_context_to_logs(log_text: str, deployment_context: Dict[str,
 # =============================================================================
 
 @router.post("/notify-deployment", response_model=DeploymentResponse, dependencies=[GitHubWebhookAuth])
-async def notify_deployment(payload: DeploymentPayload):
+async def notify_deployment(request: Request):
     """
     MVP4 Deployment Notification Endpoint.
     
-    Called by GitHub Actions when code is pushed. Puts OpsTron into
+    Called natively by GitHub Webhooks when code is pushed. Puts OpsTron into
     "Deployment Watch Mode" for the next 5 minutes.
-    
-    Any errors that occur during watch mode are automatically correlated
-    with this deployment, allowing instant identification of deployment
-    regressions.
-    
-    Args:
-        payload: DeploymentPayload from GitHub Actions workflow.
-        
-    Returns:
-        DeploymentResponse: Confirmation that watch mode is active.
     """
-    logger.info(f"[DEPLOY] Received deployment notification")
-    logger.info(f"[DEPLOY] Repository: {payload.repository}")
-    logger.info(f"[DEPLOY] Commit: {payload.commit_sha[:7]}")
-    logger.info(f"[DEPLOY] Author: {payload.author}")
-    logger.info(f"[DEPLOY] Message: {payload.message}")
+    payload_dict = await request.json()
+    
+    # Check if this is a ping event
+    if "zen" in payload_dict:
+        logger.info("[DEPLOY] Received GitHub ping event. Webhook is working!")
+        return DeploymentResponse(
+            status="ping_received",
+            deployment_id="ping",
+            commit_sha="ping",
+            watch_until="",
+            message="OpsTron webhook ping received successfully."
+        )
+
+    # Parse standard GitHub Push Event
+    try:
+        repo_full_name = payload_dict.get("repository", {}).get("full_name", "unknown/repo")
+        ref = payload_dict.get("ref", "")
+        branch = ref.replace("refs/heads/", "") if ref.startswith("refs/heads/") else ref
+
+        logger.info(f"[DEPLOY] Push event for repo={repo_full_name} ref={ref}")
+        logger.debug(f"[DEPLOY] Raw payload keys: {list(payload_dict.keys())}")
+
+        # `head_commit` can be null for empty pushes — fall back to last commit in list
+        head_commit = payload_dict.get("head_commit")
+        if not head_commit:
+            commits = payload_dict.get("commits", [])
+            if commits:
+                head_commit = commits[-1]
+                logger.warning(f"[DEPLOY] head_commit was null, falling back to commits[-1]")
+            else:
+                # Last resort: use `after` SHA if available
+                after_sha = payload_dict.get("after", "")
+                if after_sha and after_sha != "0000000000000000000000000000000000000000":
+                    head_commit = {
+                        "id": after_sha,
+                        "author": {"name": payload_dict.get("pusher", {}).get("name", "unknown")},
+                        "message": "Deployment push"
+                    }
+                    logger.warning(f"[DEPLOY] No commits in payload, using 'after' SHA: {after_sha[:7]}")
+                else:
+                    raise ValueError("No head_commit, no commits, and no valid 'after' SHA found in push event.")
+
+        commit_sha = head_commit.get("id")
+        author = head_commit.get("author", {}).get("username") or head_commit.get("author", {}).get("name", "unknown")
+        message = head_commit.get("message", "")
+
+    except Exception as e:
+        logger.error(f"[DEPLOY] Failed to parse GitHub webhook payload: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Invalid GitHub push payload: {e}")
+
+    logger.info(f"[DEPLOY] Received deployment notification for {repo_full_name}")
+    logger.info(f"[DEPLOY] Commit: {commit_sha[:7]} by {author}")
+    
+    # Construct our internal payload model
+    parsed_payload = DeploymentPayload(
+        commit_sha=commit_sha,
+        repository=repo_full_name,
+        author=author,
+        message=message,
+        branch=branch
+    )
     
     # Register the deployment
-    deployment_id = deployment_watcher.register_deployment(payload)
+    deployment_id = deployment_watcher.register_deployment(parsed_payload)
     active = deployment_watcher.get_active_deployment()
     
     return DeploymentResponse(
         status="watching",
         deployment_id=deployment_id,
-        commit_sha=payload.commit_sha,
+        commit_sha=parsed_payload.commit_sha,
         watch_until=active["watch_until"] if active else "",
-        message=f"OpsTron is now watching for errors related to commit {payload.commit_sha[:7]}. Watch mode active for 5 minutes."
+        message=f"OpsTron is now watching for errors related to commit {parsed_payload.commit_sha[:7]}. Watch mode active for 5 minutes."
     )
 
 
@@ -453,22 +499,28 @@ async def ingest_agent_logs(payload: AgentLogPayload):
     if active_deployment:
         logger.info(f"[DOCKER_AGENT] Active deployment watch found. Analyzing {payload.container_name} logs.")
         
-        # We simulate creating an ErrorPayload based on the raw logs
-        # The new LogAgent pre-filter will catch any actual errors within this payload
-        simulated_payload = ErrorPayload(
-            service=payload.container_name,
-            error=f"Uncaught issue in {payload.container_name}",
-            stacktrace="",
-            recent_logs=payload.logs.splitlines(),
-            env="production" # You can extend AgentLogPayload to pass env
-        )
-        
-        # We don't await this immediately so we don't block the agent from streaming
-        # In a real app, use Celery/BackgroundTasks here.
-        import asyncio
-        asyncio.create_task(ingest_error(simulated_payload))
+        # Simple pre-filter: only process if there's actually an error keyword
+        # In a real system, you'd use a more sophisticated heuristic or let the LLM decide
+        if "error" in payload.logs.lower() or "exception" in payload.logs.lower() or "traceback" in payload.logs.lower():
+            logger.warning(f"[DOCKER_AGENT] Potential error found in logs for {payload.container_name}. Triggering RCA.")
+            
+            simulated_payload = ErrorPayload(
+                service=payload.container_name,
+                error=f"Uncaught issue detected in deployment watch for {payload.container_name}",
+                stacktrace="",
+                recent_logs=payload.logs.splitlines(),
+                env="production"
+            )
+            
+            try:
+                # Await directly so we can catch exceptions if the pipeline fails
+                result = await ingest_error(simulated_payload)
+                logger.info(f"[DOCKER_AGENT] RCA Pipeline completed with status: {result.status}")
+            except Exception as e:
+                logger.error(f"[DOCKER_AGENT] Failed to trigger RCA pipeline: {e}")
+        else:
+            logger.debug(f"[DOCKER_AGENT] Logs from {payload.container_name} appear healthy. Skipping RCA.")
 
     processing_time = (time.time() - start_time) * 1000
-    logger.debug(f"[DOCKER_AGENT] Processed log chunk in {processing_time:.2f}ms")
     
     return AgentLogResponse(status="received", message=f"Processed chunk for {payload.container_id}")

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsTron - Setup Integrations</title>
+    <link rel="stylesheet" href="src/css/main.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: var(--bg-dark);
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .setup-container {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .setup-header {
+            margin-bottom: 2rem;
+        }
+
+        .setup-header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .setup-header p {
+            color: var(--text-muted);
+        }
+
+        .step-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .step-card.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .step-number {
+            position: absolute;
+            top: -15px;
+            left: -15px;
+            width: 40px;
+            height: 40px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            box-shadow: 0 4px 12px rgba(0, 242, 254, 0.3);
+        }
+
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .step-header h2 {
+            margin: 0;
+            font-size: 1.3rem;
+        }
+
+        .status-badge {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-badge.success {
+            background: rgba(46, 213, 115, 0.2);
+            color: #2ed573;
+        }
+
+        .code-block {
+            background: var(--bg-dark);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            color: var(--primary-color);
+            margin: 1rem 0;
+            position: relative;
+            overflow-x: auto;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="setup-container">
+        <div class="setup-header">
+            <h1>Connect Your Infrastructure</h1>
+            <p>Complete these two steps to start analyzing errors like a pro.</p>
+        </div>
+
+        <!-- Step 1: GitHub -->
+        <div class="step-card" id="step1">
+            <div class="step-number">1</div>
+            <div class="step-header">
+                <h2>GitHub Connection</h2>
+                <span class="status-badge" id="gh-status">Pending</span>
+            </div>
+            <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9rem;">
+                This allows OpsTron to read your recent commits to pinpoint the exact code change that caused an issue.
+            </p>
+            <form id="github-setup-form" class="form">
+                <div class="form-group">
+                    <label>GitHub Personal Access Token</label>
+                    <input type="password" id="gh-pat" class="input" placeholder="ghp_xxxx..." required>
+                </div>
+                <div class="form-group">
+                    <label>Repository (owner/repo)</label>
+                    <input type="text" id="gh-repo" class="input" placeholder="e.g. yourname/backend" required>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="connectGitHub()">Connect Repository</button>
+            </form>
+        </div>
+
+        <!-- Step 2: Docker -->
+        <div class="step-card disabled" id="step2">
+            <div class="step-number">2</div>
+            <div class="step-header">
+                <h2>Docker Log Ingestion</h2>
+                <span class="status-badge" id="docker-status">Waiting...</span>
+            </div>
+            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem;">
+                Run this command on your server to install the OpsTron Log Forwarder sidecar. It will securely stream
+                errors to our AI.
+            </p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode()">Copy</button>
+                <code id="docker-command">docker run -d \
+  --name opstron-forwarder \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -e OPSTRON_API_KEY="sk_live_12345" \
+  opstron/agent:latest</code>
+            </div>
+
+            <div
+                style="display: flex; align-items: center; gap: 10px; margin-top: 1.5rem; color: var(--text-muted); font-size: 0.9rem;">
+                <div class="spinner"
+                    style="width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.1); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite;">
+                </div>
+                Listening for first log ping...
+            </div>
+            <div style="margin-top: 1rem; text-align: right;">
+                <button class="btn btn-secondary" onclick="skipDocker()">Simulate Connection</button>
+            </div>
+        </div>
+
+        <div style="text-align: right; margin-top: 2rem;">
+            <button class="btn btn-primary disabled" id="finish-btn" onclick="window.location.href='index.html'"
+                style="opacity: 0.5; pointer-events: none; padding: 12px 24px; font-size: 1.1rem;">Go to Dashboard
+                ➔</button>
+        </div>
+    </div>
+
+    <!-- Toast UI -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script>
+        // Simple mock logic for the flow
+        function connectGitHub() {
+            if (!document.getElementById('gh-pat').value || !document.getElementById('gh-repo').value) {
+                showToast("Please fill in both fields", "error");
+                return;
+            }
+
+            showToast("Verifying GitHub credentials...", "info");
+            setTimeout(() => {
+                document.getElementById('gh-status').textContent = "Connected \u2714";
+                document.getElementById('gh-status').classList.add('success');
+                document.getElementById('github-setup-form').style.opacity = "0.5";
+                document.getElementById('github-setup-form').style.pointerEvents = "none";
+
+                // Unlock step 2
+                document.getElementById('step2').classList.remove('disabled');
+                showToast("GitHub Connected!", "success");
+            }, 1000);
+        }
+
+        function copyCode() {
+            navigator.clipboard.writeText(document.getElementById('docker-command').textContent);
+            showToast("Copied to clipboard!", "success");
+        }
+
+        function skipDocker() {
+            document.getElementById('docker-status').textContent = "Connected \u2714";
+            document.getElementById('docker-status').classList.add('success');
+
+            // Unlock Finish
+            const finishBtn = document.getElementById('finish-btn');
+            finishBtn.style.opacity = "1";
+            finishBtn.style.pointerEvents = "auto";
+            finishBtn.classList.remove('disabled');
+
+            showToast("Log forwarder detected!", "success");
+        }
+
+        // Mini toast system from app.js clone
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+
+            let icon = 'ℹ️';
+            if (type === 'error') icon = '🚨';
+            if (type === 'success') icon = '✅';
+
+            toast.innerHTML = `<span class="toast-icon">${icon}</span><div class="toast-content"><p class="toast-message">${message}</p></div>`;
+            container.appendChild(toast);
+
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // CSS for animation injection
+        const style = document.createElement('style');
+        style.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
+        document.head.appendChild(style);
+    </script>
+</body>
+
+</html>

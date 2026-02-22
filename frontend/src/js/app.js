@@ -16,12 +16,14 @@ const CONFIG = {
 // State Management
 // ===========================================
 const state = {
+    opsToken: localStorage.getItem('ops_token') || '',
     githubToken: localStorage.getItem('github_token') || '',
     githubRepo: localStorage.getItem('github_repo') || '',
     rcaReports: [],
     errorLogs: [],
     commits: []
 };
+
 
 // ===========================================
 // DOM Elements
@@ -363,7 +365,11 @@ async function triggerTestError() {
 
 async function fetchRCAHistory() {
     try {
-        const response = await fetch(`${CONFIG.AGENT_URL}/rca-history`);
+        const response = await fetch(`${CONFIG.AGENT_URL}/rca-history`, {
+            headers: {
+                'Authorization': `Bearer ${state.opsToken}`
+            }
+        });
 
         if (!response.ok) {
             throw new Error('Failed to fetch RCA history');
@@ -460,6 +466,36 @@ function escapeHtml(text) {
 // ===========================================
 async function init() {
     console.log('🚀 OpsTron Dashboard initializing...');
+
+    // 1. Check for token in URL (from GitHub OAuth redirect)
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenFromUrl = urlParams.get('token');
+
+    if (tokenFromUrl) {
+        // We received a token from the auth flow
+        localStorage.setItem('ops_token', tokenFromUrl);
+        state.opsToken = tokenFromUrl;
+
+        // Clean up the URL so the token doesn't stay visible
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // 2. Ensure user is logged in
+    if (!state.opsToken) {
+        // If not logged in and not on the login page, redirect
+        if (!window.location.pathname.includes('login.html')) {
+            window.location.href = 'login.html';
+            return;
+        }
+    } else {
+        // If logged in but on the login page, redirect to onboarding
+        if (window.location.pathname.includes('login.html')) {
+            window.location.href = 'onboarding.html';
+            return;
+        }
+        // Mark setup as done since user reached the dashboard
+        localStorage.setItem('setup_done', 'true');
+    }
 
     // Initialize components
     initNavigation();
