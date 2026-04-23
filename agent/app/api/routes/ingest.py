@@ -18,7 +18,7 @@ from app.models.error_models import ErrorPayload, IngestResponse, DeploymentPayl
 from app.core.orchestrator import RCAOrchestrator
 from app.core.config.settings import settings
 from app.utils.github_api import GitHubClient
-from app.api.middleware.auth import GitHubWebhookAuth
+from app.api.middleware.auth import GitHubWebhookAuth, AgentKeyAuth, verify_api_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -522,5 +522,94 @@ async def ingest_agent_logs(payload: AgentLogPayload):
             logger.debug(f"[DOCKER_AGENT] Logs from {payload.container_name} appear healthy. Skipping RCA.")
 
     processing_time = (time.time() - start_time) * 1000
-    
+
     return AgentLogResponse(status="received", message=f"Processed chunk for {payload.container_id}")
+
+
+# =============================================================================
+# Agent Heartbeat (Phase 3 — Per-User Scoped)
+# =============================================================================
+
+# In-memory heartbeat store: user_id → {last_seen, hostname, ...}
+# Will move to Redis in Phase 7 when Redis is added to requirements
+_heartbeats: Dict[str, Dict[str, Any]] = {}
+
+
+class HeartbeatPayload(BaseModel):
+    agent_version: str = "unknown"
+    hostname: str = "unknown"
+    monitored_containers: List[str] = []
+
+
+@router.post("/agent/heartbeat")
+async def agent_heartbeat(
+    payload: HeartbeatPayload,
+    agent_identity: dict = AgentKeyAuth,
+):
+    """
+    Called by opstron-agent on startup and every 60 seconds.
+
+    Stores last-seen timestamp scoped per user_id.
+    Key: agent:{user_id}:heartbeat
+    Two users' agents never overwrite each other.
+    """
+    user_id = agent_identity["user_id"]
+
+    _heartbeats[user_id] = {
+        "last_seen": datetime.utcnow().isoformat(),
+        "hostname": payload.hostname,
+        "agent_version": payload.agent_version,
+        "monitored_containers": payload.monitored_containers,
+        "status": "connected",
+    }
+
+    logger.info(f"[HEARTBEAT] user={user_id} host={payload.hostname} v={payload.agent_version}")
+    return {"status": "ok", "message": "Heartbeat received"}
+
+
+@router.get("/agent/status")
+async def get_agent_status(user: dict = AgentKeyAuth):
+    """
+    Returns the current user's agent status.
+    Called by the onboarding page every 2 seconds while waiting for agent.
+    Called by the dashboard every 30 seconds to show status badge.
+    """
+    user_id = user["user_id"]
+    data = _heartbeats.get(user_id)
+
+    if not data:
+        return {
+            "status": "offline",
+            "message": "No agent connected. Run the opstron-agent Docker container.",
+        }
+
+    # Check freshness — treat as offline if last seen > 90 seconds ago
+    last_seen = datetime.fromisoformat(data["last_seen"])
+    age_seconds = (datetime.utcnow() - last_seen).total_seconds()
+
+    if age_seconds > 90:
+        return {
+            "status": "offline",
+            "message": f"Agent last seen {int(age_seconds)}s ago. May have stopped.",
+            "last_seen": data["last_seen"],
+        }
+
+    return {
+        "status": "connected",
+        "last_seen": data["last_seen"],
+        "hostname": data["hostname"],
+        "agent_version": data["agent_version"],
+        "age_seconds": int(age_seconds),
+        "monitored_containers": data.get("monitored_containers", []),
+    }
+
+
+@router.get("/agent/status/by-session")
+async def get_agent_status_by_session(user: dict = AgentKeyAuth):
+    """
+    Same as /agent/status but accepts Bearer token (GitHub session)
+    instead of X-API-Key. Used by the onboarding page which has the
+    session token but not the agent key yet.
+    """
+    from app.api.middleware.auth import get_session
+    return await get_agent_status(user)

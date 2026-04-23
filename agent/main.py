@@ -17,8 +17,10 @@ Version: 3.0.0
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import logging
 import sys
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -35,53 +37,58 @@ logger = logging.getLogger(__name__)
 def create_app() -> FastAPI:
     """
     Application Factory.
-    
+
     Creates and configures the FastAPI application with all routes,
     middleware, and event handlers.
-    
+
     Returns:
         FastAPI: Configured application instance.
     """
-    
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # --- Startup ---
+        logger.info("=" * 60)
+        logger.info("OpsTron RCA Agent Starting...")
+        logger.info(f"Version: 3.0.0")
+        logger.info(f"Docs available at /docs")
+        logger.info("=" * 60)
+        yield
+        # --- Shutdown ---
+        logger.info("OpsTron RCA Agent Shutting Down...")
+
     app = FastAPI(
         title="OpsTron RCA Agent",
         description="""
         ## AI-Powered Root Cause Analysis System
-        
+
         OpsTron automatically analyzes runtime errors and provides actionable insights.
-        
+
         ### Features
         - **Automated Error Ingestion**: Backend services POST errors to `/ingest-error`
         - **Manual Log Upload**: Upload `.log` files to `/analyze`
         - **GitHub Integration**: Analyze recent commits for context
         - **Runbook Matching**: Find relevant runbooks for the error
         - **AI Synthesis**: Generate comprehensive RCA reports
-        
-        ### Quick Start
-        1. Configure GitHub: `POST /config/github`
-        2. Trigger an error in your backend
-        3. View RCA report in response or dashboard
         """,
         version="3.0.0",
         docs_url="/docs",
-        redoc_url="/redoc"
+        redoc_url="/redoc",
+        lifespan=lifespan,
     )
-    
+
     # Configure CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure for production
+        allow_origins=["*"],  # Tighten in production
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Register routes
     _register_routes(app)
-    
-    # Register event handlers
-    _register_events(app)
-    
+
     return app
 
 
@@ -89,23 +96,6 @@ def _register_routes(app: FastAPI):
     """Register all API routes."""
     from app.api import api_router
     app.include_router(api_router)
-
-
-def _register_events(app: FastAPI):
-    """Register startup and shutdown events."""
-    
-    @app.on_event("startup")
-    async def startup_event():
-        logger.info("=" * 60)
-        logger.info("OpsTron RCA Agent Starting...")
-        logger.info("=" * 60)
-        logger.info(f"Version: 3.0.0")
-        logger.info(f"Docs: http://localhost:8001/docs")
-        logger.info("=" * 60)
-    
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        logger.info("OpsTron RCA Agent Shutting Down...")
 
 
 # Create application instance
@@ -118,11 +108,14 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    
+
+    # Railway injects PORT env var. Fall back to 8001 for local dev.
+    port = int(os.environ.get("PORT", 8001))
+
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8001,
-        reload=True,
+        port=port,
+        reload=(port == 8001),   # reload only in local dev
         log_level="info"
     )

@@ -1,0 +1,97 @@
+# OpsTron — Execution Tracker
+
+## Week 1 — Product Fixes
+
+### Phase 0 — Railway Deployment
+- [ ] Check for existing railway.toml / Procfile
+- [ ] Create `railway.toml` with correct start command
+- [ ] Install Railway CLI (`npm install -g @railway/cli`)
+- [ ] `railway login`
+- [ ] `railway init` + `railway up` from `agent/` directory
+- [ ] Set all env vars in Railway dashboard
+- [ ] Add Redis plugin in Railway
+- [ ] Update `BACKEND` constant in `onboarding.html` to Railway URL
+- [ ] Verify health check endpoint responds on public URL
+
+### Phase 3 — Per-User API Keys + Scoped Heartbeat
+- [ ] Update `create_session()` in `auth.py` to accept + store `agent_api_key`
+- [ ] Generate unique `agent_api_key` in OAuth callback (`auth.py`)
+- [ ] Store `apikey:{key} → user_id` reverse mapping in Redis at login
+- [ ] Update `verify_api_key()` to do Redis lookup instead of static env var compare
+- [ ] Update `GET /auth/me` to return `agent_api_key` in response
+- [ ] Add `/agent/heartbeat` endpoint (scoped: `agent:{user_id}:heartbeat`)
+- [ ] Add `GET /agent/status` endpoint (reads from user-scoped key)
+
+### Phase 7a+b — Supabase Schema + User Wiring
+- [ ] Add `opstron_users` table to `schema.sql`
+- [ ] Add `connected_repos` table to `schema.sql`
+- [ ] Add `user_id` column to `deployments` and `rca_logs` tables
+- [ ] Run updated schema in Supabase SQL Editor
+- [ ] Add `get_user_by_github_id()` to `supabase_client.py`
+- [ ] Add `create_opstron_user()` to `supabase_client.py`
+- [ ] Add `get_user_by_api_key()` to `supabase_client.py`
+- [ ] Wire OAuth callback → upsert user in Supabase
+- [ ] Add `supabase==2.4.6` to `requirements.txt`
+- [ ] Add Supabase keys to `settings.py`
+
+### Phase 2 — Fix opstron_forwarder.py
+- [ ] Replace `tail=50` with `since=last_poll_time` (no duplicate lines)
+- [ ] Add label filter: only monitor `opstron.monitor=true` containers
+- [ ] Add Docker Events watcher thread (crash/OOM detection)
+- [ ] Add `send_heartbeat()` call on startup + every 60s
+
+### Phase 1 — Dockerfile + Docker Hub
+- [ ] Create `agent/Dockerfile.agent`
+- [ ] Build and test image locally
+- [ ] Push `opstron/agent:latest` to Docker Hub
+
+### Phase 4 — Fix Onboarding Docker Snippet
+- [ ] Replace broken docker-compose snippet (references local file) with Docker Hub image
+- [ ] Replace curl snippet with `docker run opstron/agent:latest`
+- [ ] Add `loadUserApiKey()` to pre-fill API key in snippet
+
+### Phase 5 — Real Connection Verification
+- [ ] Remove fake `simulateDockerConnect()` function
+- [ ] Add `startHeartbeatPolling()` — polls `/agent/status` every 2s
+- [ ] Show spinner while waiting, success card when connected, retry on timeout
+- [ ] Auto-trigger polling when Step 2 becomes visible
+
+### Phase 6 — Agent Status on Dashboard
+- [ ] Add agent status badge element to `index.html` header
+- [ ] Add `refreshAgentStatus()` — polls `/agent/status` every 30s
+- [ ] Show 🟢/🔴 based on response
+
+### Phase 7c — Wire RCA → Supabase
+- [ ] After orchestrator returns result in `worker.py`, write to `rca_logs`
+- [ ] Pass `user_id` through the job payload so worker can scope the write
+
+---
+
+## Week 2 — Infrastructure
+
+### Redis Queue + ARQ Worker
+- [ ] Update `requirements.txt` with all missing deps (Phase 0 from infra plan)
+- [ ] Create `redis_client.py`
+- [ ] Add Redis settings + `MAX_QUEUE_LENGTH` to `settings.py`
+- [ ] Rewrite `queue.py` using ARQ native `enqueue_job()`
+- [ ] Create `worker.py` as separate process
+- [ ] Rewrite `ingest_error()` to queue instead of call orchestrator
+- [ ] Add `GET /rca/{job_id}` polling endpoint
+- [ ] Move DeploymentWatcher → Redis
+- [ ] Move session store → Redis (Phase 6 infra plan)
+
+### Parallel Agents + Retries
+- [ ] `asyncio.gather()` for LogAgent + CommitAgent in orchestrator
+- [ ] Add `tenacity` retries on LLM calls
+- [ ] Add `aiohttp.ClientTimeout` on GitHub API calls
+
+### Rate Limiting
+- [ ] Add `slowapi` to requirements
+- [ ] Apply `@limiter.limit()` to `/ingest-error` and `/agent/logs/ingest`
+
+### Tests
+- [ ] `tests/unit/test_log_agent.py`
+- [ ] `tests/unit/test_deployment_watcher.py`
+- [ ] `tests/unit/test_deduplication.py`
+- [ ] `tests/integration/test_ingest_pipeline.py`
+- [ ] `tests/integration/test_webhook_flow.py`

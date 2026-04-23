@@ -115,13 +115,14 @@ async def github_callback(code: str):
     
     github_user = user_response.json()
     logger.info(f"GitHub OAuth successful for user: {github_user.get('login')}")
-    
-    # --- Create a session and redirect to frontend ---
+
+    # --- Create a session with a unique agent API key ---
+    # This key is what the user's Docker agent will use in X-API-Key header
     session_token = create_session(github_user, access_token)
-    
+
     # Redirect to the onboarding page with the session token
     frontend_url = f"{settings.FRONTEND_URL}/onboarding.html?token={session_token}"
-    
+
     return RedirectResponse(url=frontend_url)
 
 
@@ -133,12 +134,19 @@ async def github_callback(code: str):
 async def get_current_user(user: dict = GitHubAuth):
     """
     Return the profile of the currently authenticated user.
-    
-    Requires Bearer token in Authorization header.
+    Includes agent_api_key so the onboarding page can display it
+    pre-filled in the Docker run command.
     """
     return {
         "authenticated": True,
-        "user": user,
+        "user": {
+            "github_id": user.get("github_id"),
+            "login": user.get("login"),
+            "name": user.get("name"),
+            "avatar_url": user.get("avatar_url"),
+            "email": user.get("email"),
+            "agent_api_key": user.get("agent_api_key"),  # ← shown in onboarding Docker snippet
+        },
     }
 
 

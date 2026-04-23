@@ -1,0 +1,770 @@
+# OpsTron — User Flow & Docker Agent Fix (Priority 1)
+
+> Fix the product first. Redis architecture second.
+> A perfect queue means nothing if users can't onboard.
+
+---
+
+## What You Actually Already Have (Good News First)
+
+After reading `onboarding.html` and `integrations.py`, you're much further along than you thought.
+
+**Already working correctly:**
+- GitHub OAuth login flow ✅
+- `GET /integrations/repos` — fetches user's repos via their OAuth token ✅
+- `POST /integrations/install-webhook` — installs the webhook ON THE USER'S REPO automatically via GitHub API ✅
+- Duplicate webhook check ✅
+- Repo picker UI with search, language dots, private badges ✅
+
+**The user does NOT need to clone your repo to connect GitHub.**
+The onboarding already does this correctly — it uses the user's OAuth token to call GitHub's API and install the webhook. Zero manual steps.
+
+---
+
+## The Real Problems (What Actually Needs Fixing)
+
+### 🔴 Problem 1 — Docker Step tells user to copy YOUR source file
+
+**In `onboarding.html` Step 2, the Docker Compose snippet says:**
+```yaml
+volumes:
+  - ./opstron_forwarder.py:/app/opstron_forwarder.py   ← ❌ WRONG
+command: sh -c "pip install requests docker -q && python /app/opstron_forwarder.py"
+```
+
+This assumes `opstron_forwarder.py` is on the user's machine. It won't be — they haven't cloned your repo. The curl command also pulls from your GitHub raw URL which is fragile.
+
+**Fix:** Publish `opstron/agent` to Docker Hub. The snippet becomes:
+```yaml
+opstron-agent:
+  image: opstron/agent:latest   ← pulled from Docker Hub, zero files needed
+  ...
+```
+
+---
+
+### 🔴 Problem 2 — "Simulate Connection" button fakes it
+
+```javascript
+function simulateDockerConnect() {
+    toast('Docker agent connected!', 'success');
+    setTimeout(() => { currentStep = 3; showStep(3); }, 800);
+}
+```
+
+This literally just shows a success toast and moves to step 3 without any real connection check. Users complete onboarding thinking they're connected when they're not.
+
+**Fix:** Add a `/agent/heartbeat` endpoint that the agent POSTs to on startup. The onboarding page polls this endpoint for 60 seconds to detect real connection.
+
+---
+
+### 🔴 Problem 3 — `opstron_forwarder.py` has the `tail=50` duplicate problem
+
+Every 5 seconds, it sends the same last 50 lines. No deduplication, no streaming, no label filtering.
+
+---
+
+### 🟡 Problem 4 — No agent status on the dashboard
+
+After onboarding, the user has no way to know if their agent is still running. Dashboard should show "Agent: Connected ✅" or "Agent: Offline ⚠️".
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> **Do you have a Docker Hub account?** Publishing `opstron/agent:latest` requires one. If not, you can use GitHub Container Registry (ghcr.io) for free with your existing GitHub account.
+
+> [!IMPORTANT]
+> **Is your backend publicly accessible?** The webhook install sets `active: False` for localhost URLs. For real users, you need a public URL (ngrok for dev, a VPS or Railway for prod). This doesn't need code — just deployment.
+
+---
+
+## Phases Overview
+
+| Phase | What | Files | Time |
+|---|---|---|---|
+| 0 | Deploy backend to Railway (public URL) | — | 20 min |
+| 1 | Dockerfile for agent + publish to Docker Hub | new `Dockerfile.agent` | 30 min |
+| 2 | Fix `opstron_forwarder.py` (streaming + labels + events) | `opstron_forwarder.py` | 1 hr |
+| 3 | Per-user API keys + `/agent/heartbeat` endpoint | `auth.py`, `ingest.py`, `schema.sql` | 1 hr |
+| 4 | Fix onboarding Step 2 Docker snippet | `onboarding.html` | 30 min |
+| 5 | Fix onboarding Step 2 connection verification | `onboarding.html` | 45 min |
+| 6 | Add agent status indicator to dashboard | `index.html` | 30 min |
+| 7 | Wire Supabase — persist users, RCA reports, deployments | `auth.py`, `ingest.py`, `schema.sql` | 2 hrs |
+
+---
+
+## Phase 0 — Deploy Backend to Railway (Unlocks Everything)
+
+> [!IMPORTANT]
+> **This must happen before anything else works end-to-end.** Without a public URL, GitHub webhooks are registered as `active: false` and never fire. Your entire deployment watch system is silently broken on localhost.
+
+**Steps (20 minutes, no code changes):**
+
+```bash
+# 1. Install Railway CLI
+npm install -g @railway/cli
+
+# 2. Login
+railway login
+
+# 3. Deploy from your agent/ directory
+cd agent
+railway init        # creates a new project
+railway up          # deploys, gives you a public URL like:
+                    # https://opstron-production.up.railway.app
+
+# 4. Set environment variables in Railway dashboard
+# (copy from your .env file)
+```
+
+**After deployment:**
+- Update `AGENT_URL` and `FRONTEND_URL` in your `.env`
+- Update `BACKEND` constant in `onboarding.html` from `http://localhost:8001` to your Railway URL
+- GitHub webhooks will now register as `active: true` and actually fire
+
+> [!NOTE]
+> Railway free tier gives you $5/month of compute — enough for OpsTron at this stage. For Redis, add a Redis plugin inside the same Railway project (one click).
+
+---
+
+## Phase 1 — Dockerfile for the Agent
+
+**File:** `agent/Dockerfile.agent` — **[NEW]**
+
+```dockerfile
+# OpsTron Log Forwarding Agent
+# Lightweight container — runs on USER'S machine alongside their services
+# Published to Docker Hub as opstron/agent:latest
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Only install what the forwarder needs — not the full OpsTron stack
+RUN pip install --no-cache-dir docker==7.1.0 requests==2.32.3
+
+COPY opstron_forwarder.py /app/forwarder.py
+
+# Health check so Docker knows the container is alive
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8080/health', timeout=3)" || exit 1
+
+CMD ["python", "/app/forwarder.py"]
+```
+
+**Build and publish commands:**
+```bash
+# Build
+docker build -f Dockerfile.agent -t opstron/agent:latest ./agent
+
+# Test locally
+docker run -d \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e OPSTRON_API_KEY=test \
+  -e OPSTRON_BACKEND_URL=http://host.docker.internal:8001 \
+  opstron/agent:latest
+
+# Publish to Docker Hub
+docker push opstron/agent:latest
+```
+
+---
+
+## Phase 2 — Fix `opstron_forwarder.py`
+
+**File:** `agent/opstron_forwarder.py` — **[MODIFY]**
+
+Three improvements:
+
+### Fix A — Use `since` timestamp to avoid duplicate log lines
+
+```python
+# BEFORE (sends same 50 lines every poll)
+logs = container.logs(tail=50).decode('utf-8', errors='ignore')
+
+# AFTER (only sends NEW lines since last poll)
+from datetime import datetime, timezone
+
+last_poll: dict[str, datetime] = {}  # container_id → last poll time
+
+since = last_poll.get(container.id, datetime.now(timezone.utc))
+logs_bytes = container.logs(since=since, until=datetime.now(timezone.utc))
+last_poll[container.id] = datetime.now(timezone.utc)
+logs = logs_bytes.decode('utf-8', errors='ignore')
+
+if not logs.strip():
+    continue  # nothing new, skip
+```
+
+### Fix B — Filter by opt-in label
+
+```python
+# BEFORE (monitors ALL containers)
+containers = client.containers.list()
+
+# AFTER (only containers that opted in)
+containers = client.containers.list(
+    filters={"label": "opstron.monitor=true"}
+)
+```
+
+User adds to their docker-compose.yml:
+```yaml
+my-api:
+  image: my-api:latest
+  labels:
+    - "opstron.monitor=true"   # ← one line to opt in
+```
+
+### Fix C — Add Docker Events stream for crash detection
+
+Run alongside the polling loop in a separate thread:
+
+```python
+import threading
+
+def watch_docker_events(client, backend_url, api_key):
+    """
+    Listen for container crash/OOM events in real time.
+    Fires immediately when a container dies — no polling delay.
+    """
+    for event in client.events(decode=True, filters={"type": "container"}):
+        action = event.get("Action", "")
+        if action in ("die", "oom", "kill"):
+            attrs = event.get("Actor", {}).get("Attributes", {})
+            container_name = attrs.get("name", "unknown")
+            exit_code = attrs.get("exitCode", "unknown")
+
+            # Only alert if this container is opted in
+            if attrs.get("opstron.monitor") != "true":
+                continue
+
+            logger.warning(f"[EVENT] Container {container_name} {action} (exit={exit_code})")
+
+            payload = {
+                "service": container_name,
+                "error": f"Container {action}: exit code {exit_code}",
+                "stacktrace": "",
+                "recent_logs": [],
+                "env": "production",
+                "extra": {"docker_event": action, "exit_code": exit_code}
+            }
+            try:
+                requests.post(
+                    backend_url.replace("/agent/logs/ingest", "/ingest-error"),
+                    json=payload,
+                    headers={"X-API-Key": api_key},
+                    timeout=5
+                )
+            except Exception as e:
+                logger.error(f"Failed to send crash event: {e}")
+
+# Start event watcher in background thread
+event_thread = threading.Thread(
+    target=watch_docker_events,
+    args=(client, BACKEND_URL, API_KEY),
+    daemon=True
+)
+event_thread.start()
+```
+
+### Fix D — Add heartbeat on startup
+
+```python
+def send_heartbeat(backend_url: str, api_key: str):
+    """Tell OpsTron this agent is alive."""
+    try:
+        requests.post(
+            backend_url.replace("/agent/logs/ingest", "/agent/heartbeat"),
+            json={
+                "agent_version": "2.0",
+                "hostname": os.uname().nodename,
+                "monitored_containers": []  # filled in after first poll
+            },
+            headers={"X-API-Key": api_key},
+            timeout=5
+        )
+        logger.info("Heartbeat sent to OpsTron backend")
+    except Exception as e:
+        logger.warning(f"Heartbeat failed (backend may not be ready): {e}")
+```
+
+---
+
+## Phase 3 — Per-User API Keys + `/agent/heartbeat` Endpoint
+
+Two things happen in this phase together because they share the same root: each user needs a unique, scoped identity.
+
+### 3a. Per-User API Key Generation
+
+**File:** `agent/app/api/routes/auth.py` — **[MODIFY]**
+
+On GitHub OAuth callback, after fetching the user profile, generate a unique agent key and store it in the user's session:
+
+```python
+import secrets
+
+# In github_callback(), after fetching github_user:
+agent_api_key = secrets.token_urlsafe(24)  # unique per user
+
+# Store in session alongside the user data
+session_token = create_session(github_user, access_token, agent_api_key)
+```
+
+**File:** `agent/app/api/middleware/auth.py` — **[MODIFY]**
+
+Update `create_session()` to include the agent key:
+
+```python
+def create_session(github_user: dict, github_access_token: str, agent_api_key: str = "") -> str:
+    token = secrets.token_urlsafe(32)
+    session_data = {
+        "github_id": str(github_user.get("id")),
+        "login": github_user.get("login"),
+        "name": github_user.get("name"),
+        "avatar_url": github_user.get("avatar_url"),
+        "email": github_user.get("email"),
+        "github_access_token": github_access_token,
+        "agent_api_key": agent_api_key,  # ← NEW: user's unique agent key
+    }
+    # Store in Redis (replaces in-memory dict)
+    await redis.setex(f"session:{token}", 86400, json.dumps(session_data))
+    return token
+```
+
+Update `GET /auth/me` to return the agent key so the onboarding page can display it:
+
+```python
+@router.get("/me")
+async def get_current_user(user: dict = GitHubAuth):
+    return {
+        "authenticated": True,
+        "user": {
+            "login": user["login"],
+            "name": user["name"],
+            "avatar_url": user["avatar_url"],
+            "agent_api_key": user["agent_api_key"],  # ← shown in onboarding snippet
+        }
+    }
+```
+
+### 3b. Update `verify_api_key` to be User-Aware
+
+**File:** `agent/app/api/middleware/auth.py` — **[MODIFY]**
+
+Instead of comparing to a static env var, look up which user this key belongs to:
+
+```python
+async def verify_api_key(request: Request) -> dict:
+    """
+    Validates X-API-Key header.
+    Looks up which user owns this key via Redis scan.
+    Returns the user's session data so endpoints know which user is calling.
+    """
+    key = request.headers.get("X-API-Key")
+    if not key:
+        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+
+    redis = await get_redis()
+    # Look up user by their agent key
+    user_id = await redis.get(f"apikey:{key}")  # stored at login time
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired API key")
+
+    return {"user_id": user_id, "api_key": key}
+```
+
+At login, store the reverse mapping (`apikey → user_id`):
+
+```python
+# In create_session(), after generating agent_api_key:
+await redis.setex(
+    f"apikey:{agent_api_key}",
+    86400 * 30,  # 30 days
+    github_user_id
+)
+```
+
+### 3c. Scoped Heartbeat Endpoint
+
+**File:** `agent/app/api/routes/ingest.py` — **[MODIFY]**
+
+Heartbeat is now scoped per user so two users' agents don't overwrite each other:
+
+```python
+class HeartbeatPayload(BaseModel):
+    agent_version: str = "unknown"
+    hostname: str = "unknown"
+    monitored_containers: list[str] = []
+
+@router.post("/agent/heartbeat", dependencies=[Depends(verify_api_key)])
+async def agent_heartbeat(
+    payload: HeartbeatPayload,
+    agent_identity: dict = Depends(verify_api_key)  # gets user_id from key
+):
+    redis = await get_redis()
+    user_id = agent_identity["user_id"]
+
+    heartbeat_data = {
+        "last_seen": datetime.utcnow().isoformat(),
+        "hostname": payload.hostname,
+        "agent_version": payload.agent_version,
+        "monitored_containers": payload.monitored_containers,
+    }
+    # KEY IS NOW SCOPED: agent:{user_id}:heartbeat
+    # Two users can have agents running simultaneously without collision
+    await redis.setex(f"agent:{user_id}:heartbeat", 90, json.dumps(heartbeat_data))
+    logger.info(f"[HEARTBEAT] User {user_id} | Agent alive on {payload.hostname}")
+    return {"status": "ok", "message": "Heartbeat received"}
+
+
+@router.get("/agent/status")
+async def get_agent_status(user: dict = GitHubAuth):
+    """Returns the current user's agent status."""
+    redis = await get_redis()
+    user_id = str(user["github_id"])
+    raw = await redis.get(f"agent:{user_id}:heartbeat")
+    if not raw:
+        return {"status": "offline", "message": "No agent connected."}
+    data = json.loads(raw)
+    ttl = await redis.ttl(f"agent:{user_id}:heartbeat")
+    return {
+        "status": "connected",
+        "last_seen": data["last_seen"],
+        "hostname": data["hostname"],
+        "ttl_seconds": ttl,
+        "monitored_containers": data.get("monitored_containers", [])
+    }
+```
+
+---
+
+## Phase 4 — Fix Onboarding Step 2 Docker Snippet
+
+**File:** `frontend/onboarding.html` — **[MODIFY]**
+
+Replace the broken docker-compose snippet (which references a local file) with one that uses the published Docker Hub image:
+
+```html
+<!-- Docker Compose snippet — uses Docker Hub image, no file copying -->
+<div class="code-block" id="dc-code">opstron-agent:
+  image: <span class="kw">opstron/agent:latest</span>   <span class="cm"># pulled from Docker Hub</span>
+  restart: unless-stopped
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+  environment:
+    OPSTRON_BACKEND_URL: <span class="st">"https://your-opstron-server/agent/logs/ingest"</span>
+    OPSTRON_API_KEY: <span class="st" id="api-key-display">"your_api_key"</span>
+  <span class="cm"># Label YOUR services to opt them in:</span>
+  <span class="cm"># my-api:</span>
+  <span class="cm">#   labels:</span>
+  <span class="cm">#     - "opstron.monitor=true"</span></div>
+```
+
+Also replace the curl snippet (which pulls from GitHub raw) with:
+
+```html
+<div class="code-block" id="direct-code"><span class="cm"># Run as a standalone Docker container</span>
+docker run -d \
+  --name opstron-agent \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -e OPSTRON_API_KEY=<span class="st" id="api-key-inline">"your_api_key"</span> \
+  -e OPSTRON_BACKEND_URL=<span class="st">"https://your-opstron-server"</span> \
+  opstron/agent:latest</div>
+```
+
+**Personalisation:** Inject the user's actual API key into the snippet. Since the user is logged in, fetch it from the session:
+
+```javascript
+// After OAuth login, fetch the user's SERVICE_API_KEY from the backend
+async function loadUserApiKey() {
+    const res = await fetch(`${BACKEND}/auth/me`, {
+        headers: { 'Authorization': `Bearer ${opsToken}` }
+    });
+    const data = await res.json();
+    const key = data.user?.service_api_key || 'YOUR_API_KEY';
+    document.querySelectorAll('[id^="api-key"]').forEach(el => {
+        el.textContent = `"${key}"`;
+    });
+}
+```
+
+---
+
+## Phase 5 — Fix Connection Verification (Replace Simulate Button)
+
+**File:** `frontend/onboarding.html` — **[MODIFY]**
+
+Replace the fake `simulateDockerConnect()` with real polling:
+
+```javascript
+let heartbeatPollInterval = null;
+
+function startHeartbeatPolling() {
+    const statusEl = document.getElementById('agent-status');
+    const btn = document.getElementById('btn-next-docker');
+    let attempts = 0;
+    const maxAttempts = 30; // 60 seconds at 2s intervals
+
+    statusEl.innerHTML = `
+        <div class="agent-waiting">
+            <div class="spinner"></div>
+            <span>Waiting for agent to connect... (${maxAttempts * 2}s timeout)</span>
+        </div>`;
+
+    heartbeatPollInterval = setInterval(async () => {
+        attempts++;
+        try {
+            const res = await fetch(`${BACKEND}/agent/status`);
+            const data = await res.json();
+
+            if (data.status === 'connected') {
+                clearInterval(heartbeatPollInterval);
+                statusEl.innerHTML = `
+                    <div class="success-card">
+                        <div class="success-icon">🟢</div>
+                        <h3>Agent Connected!</h3>
+                        <p>Monitoring <strong>${data.monitored_containers?.length || 0}</strong>
+                           containers on <code>${data.hostname}</code></p>
+                    </div>`;
+                btn.disabled = false;
+                toast('OpsTron agent is live!', 'success');
+                return;
+            }
+        } catch (e) { /* backend not ready yet */ }
+
+        if (attempts >= maxAttempts) {
+            clearInterval(heartbeatPollInterval);
+            statusEl.innerHTML = `
+                <div style="color:var(--warning)">
+                    ⚠️ Agent not detected after 60 seconds.
+                    Make sure the container is running and OPSTRON_BACKEND_URL is correct.
+                    <br><br>
+                    <button class="btn btn-secondary btn-sm" onclick="startHeartbeatPolling()">
+                        Retry Detection
+                    </button>
+                </div>`;
+        }
+    }, 2000);
+}
+```
+
+Add this where the "Simulate Connection" button was, and call `startHeartbeatPolling()` automatically when Step 2 becomes visible.
+
+---
+
+## Phase 6 — Agent Status on Dashboard
+
+**File:** `frontend/index.html` — **[MODIFY]**
+
+Add a small status badge to the dashboard header:
+
+```javascript
+async function refreshAgentStatus() {
+    try {
+        const res = await fetch(`${BACKEND}/agent/status`);
+        const data = await res.json();
+        const badge = document.getElementById('agent-status-badge');
+        if (data.status === 'connected') {
+            badge.innerHTML = `🟢 Agent: ${data.hostname}`;
+            badge.style.color = 'var(--success)';
+        } else {
+            badge.innerHTML = `🔴 Agent: Offline`;
+            badge.style.color = 'var(--error)';
+        }
+    } catch (e) {}
+}
+
+// Check every 30 seconds
+refreshAgentStatus();
+setInterval(refreshAgentStatus, 30000);
+```
+
+---
+
+## Corrected Full User Flow (After These Changes)
+
+```
+1. User visits opstron.io
+   → clicks "Login with GitHub" → OAuth → dashboard
+
+2. Onboarding Step 1 — Connect GitHub
+   → Repo picker loads their repos (GitHub API via OAuth token)
+   → User clicks their repo
+   → "Connect OpsTron" → webhook installed on their repo automatically
+   → Webhook URL: https://your-opstron-server/notify-deployment
+   → No manual GitHub settings needed ✅
+
+3. Onboarding Step 2 — Connect Docker
+   → Page shows two commands (pre-filled with their API key):
+       docker run -d opstron/agent:latest ...   (standalone)
+       OR add to docker-compose.yml             (existing setup)
+   → User runs ONE command on their server
+   → Page polls /agent/status every 2 seconds
+   → When agent connects → "🟢 Agent Connected!" → Next button unlocks
+
+4. Onboarding Step 3 — Done
+   → Go to Dashboard
+   → Dashboard shows:
+       - Agent status: 🟢 Connected (hostname, containers monitored)
+       - Deployment watch: Idle / Watching commit abc1234
+
+5. User pushes bad code
+   → GitHub webhook fires → /notify-deployment → watch mode (5 min)
+   → Docker agent detects container crash via events API → /ingest-error
+   → RCA pipeline runs → result on dashboard
+   → If critical → Twilio voice call
+```
+
+---
+
+## Phase 7 — Wire Supabase (Persist Users, RCA Reports, Deployments)
+
+You already have `supabase_client.py` and `schema.sql` fully written. You just need to connect them.
+
+### 7a. Add two missing tables to schema.sql
+
+**File:** `agent/app/db/schema.sql` — **[MODIFY]**
+
+```sql
+-- Table: OpsTron Users (one row per GitHub user who signs up)
+CREATE TABLE IF NOT EXISTS opstron_users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  github_id TEXT NOT NULL UNIQUE,
+  github_login TEXT NOT NULL,
+  github_token TEXT,                    -- OAuth token (for API calls)
+  agent_api_key TEXT NOT NULL UNIQUE,   -- their X-API-Key for the agent
+  phone_number TEXT,                    -- for Twilio alerts
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX ON opstron_users(agent_api_key);  -- fast key lookup
+CREATE INDEX ON opstron_users(github_id);
+
+-- Table: Connected Repos (which repos each user has added)
+CREATE TABLE IF NOT EXISTS connected_repos (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES opstron_users(id) ON DELETE CASCADE,
+  repo_full_name TEXT NOT NULL,          -- "owner/repo"
+  webhook_id INTEGER,                    -- GitHub webhook ID
+  webhook_active BOOLEAN DEFAULT FALSE,
+  connected_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add user_id to existing tables (scope data per user)
+ALTER TABLE deployments ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES opstron_users(id);
+ALTER TABLE rca_logs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES opstron_users(id);
+```
+
+### 7b. Wire GitHub OAuth → create/find user in Supabase
+
+**File:** `agent/app/api/routes/auth.py` — **[MODIFY]**
+
+In `github_callback()`, after fetching the GitHub user profile:
+
+```python
+from app.db.supabase_client import Database
+db = Database()
+
+# Upsert user in Supabase
+existing = await db.get_user_by_github_id(str(github_user["id"]))
+if existing:
+    agent_api_key = existing["agent_api_key"]   # reuse existing key
+else:
+    agent_api_key = secrets.token_urlsafe(24)    # generate once, store forever
+    await db.create_opstron_user({
+        "github_id": str(github_user["id"]),
+        "github_login": github_user["login"],
+        "github_token": access_token,
+        "agent_api_key": agent_api_key,
+    })
+```
+
+### 7c. Wire RCA completion → write to Supabase
+
+**File:** `agent/worker.py` — **[MODIFY]**
+
+After the orchestrator returns a result, write to Supabase:
+
+```python
+from app.db.supabase_client import Database
+db = Database()
+
+# After result = await orchestrator.analyze(...):
+await db.create_rca_log({
+    "service": payload.service,
+    "error": payload.error,
+    "stacktrace": payload_dict.get("log_text", "")[:5000],
+    "rca_report": result,
+    "is_deployment_error": bool(payload_dict.get("deployment_context")),
+    "severity": "critical" if result.get("is_deployment_caused") else "medium",
+    "endpoint": payload.endpoint,
+    "request_id": job_id,
+    "user_id": payload_dict.get("user_id"),  # passed through from ingest
+})
+```
+
+### 7d. Add missing DB methods to supabase_client.py
+
+**File:** `agent/app/db/supabase_client.py` — **[MODIFY]**
+
+Add to the `Database` class:
+
+```python
+async def get_user_by_github_id(self, github_id: str) -> Optional[Dict]:
+    if not self.client: return None
+    result = self.client.table("opstron_users").select("*").eq("github_id", github_id).execute()
+    return result.data[0] if result.data else None
+
+async def create_opstron_user(self, data: Dict) -> Dict:
+    if not self.client: return {"id": "mock", **data}
+    result = self.client.table("opstron_users").insert(data).execute()
+    return result.data[0] if result.data else None
+
+async def get_user_by_api_key(self, api_key: str) -> Optional[Dict]:
+    if not self.client: return None
+    result = self.client.table("opstron_users").select("*").eq("agent_api_key", api_key).execute()
+    return result.data[0] if result.data else None
+```
+
+### 7e. Add Supabase keys to settings
+
+**File:** `agent/app/core/config/settings.py` — **[MODIFY]**
+
+```python
+# Supabase
+SUPABASE_URL: str = ""
+SUPABASE_SERVICE_KEY: str = ""   # service role key (bypasses RLS)
+SUPABASE_ANON_KEY: str = ""      # public anon key
+```
+
+Add `supabase==2.4.6` to `requirements.txt`.
+
+---
+
+## Priority Order
+
+```
+Week 1 — Product fixes (this plan)
+  Phase 0  → Deploy to Railway           (20 min) ← unblocks everything
+  Phase 3  → Per-user API keys + heartbeat (1 hr)  ← multi-user correctness
+  Phase 7a → Run schema.sql in Supabase  (15 min) ← add missing tables
+  Phase 7b → Wire OAuth → Supabase users (30 min) ← user persistence
+  Phase 2  → Fix opstron_forwarder.py    (1 hr)   ← fix duplicates + events
+  Phase 1  → Dockerfile + Docker Hub     (30 min) ← publishable agent
+  Phase 4  → Fix onboarding Docker step  (30 min) ← correct snippet
+  Phase 5  → Real connection verification (45 min) ← no more fake button
+  Phase 6  → Agent badge on dashboard    (30 min)
+  Phase 7c → Wire RCA → Supabase         (30 min)
+
+Week 2 — Infrastructure (from Redis/ARQ plan)
+  Redis queue + ARQ worker
+  Rate limiting
+  Tests
+```
+
+**Total Week 1 effort: ~6 hours of focused work.**
+At the end, you'll have a real multi-user product with persistent data, a public URL, and a properly working onboarding flow.

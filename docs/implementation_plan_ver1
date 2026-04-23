@@ -1,0 +1,776 @@
+# OpsTron — Production Readiness Implementation Plan
+
+## What We Are Building
+
+Transform OpsTron from a blocking monolith into a decoupled, crash-resilient system:
+
+```
+BEFORE:  POST /ingest-error → [blocks 8s on LLM] → response
+AFTER:   POST /ingest-error → push to Redis queue → 202 in 50ms
+                                     ↓
+                              ARQ Worker (separate process)
+                                     ↓
+                              stores result in Redis
+                                     ↓
+                         GET /rca/{job_id} → result
+```
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> **Do you have Redis installed?** If yes, `redis-cli ping` should return `PONG`. If not, we install it first. The entire architecture depends on this.
+
+> [!IMPORTANT]
+> **Which LLM keys do you have active?** The `requirements.txt` is missing `langchain-groq` and `twilio`. If these aren't installed in your venv already, the server cannot start on any new machine.
+
+---
+
+## Phases Overview
+
+| Phase | What | Files | Time |
+|---|---|---|---|
+| 0 | Fix requirements.txt | `requirements.txt` | 5 min |
+| 1 | Redis client + settings | `settings.py`, new `redis_client.py` | 30 min |
+| 2 | ARQ worker — the RCA engine | new `worker.py`, new `queue.py` | 1.5 hrs |
+| 3 | Decouple HTTP from RCA | `ingest.py` (major rewrite) | 1 hr |
+| 4 | Parallel agent execution | `orchestrator.py` | 30 min |
+| 5 | Retry + graceful degradation | `llm.py`, `github_api.py` | 45 min |
+| 6 | Idempotency + dedup | `ingest.py` (addendum) | 30 min |
+| 7 | Session store → Redis | `middleware/auth.py` | 30 min |
+| 8 | Tests | new `tests/` directory | 2 hrs |
+| 9 | Rate limiting | `main.py`, `ingest.py` | 20 min |
+
+---
+
+## Phase 0 — Fix requirements.txt
+
+**File:** `agent/requirements.txt`  
+**Problem:** `langchain-groq`, `twilio`, `requests`, `tenacity`, `arq` are all used but not listed.
+
+#### [MODIFY] requirements.txt
+
+Replace entire file with:
+
+```
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# LangChain
+langchain==0.3.13
+langchain-core==0.3.28
+langchain-groq==0.2.4
+langchain-google-genai==2.0.6
+google-generativeai==0.8.3
+
+# HTTP
+httpx==0.27.0
+aiohttp==3.11.11
+requests==2.32.3
+
+# Queue + Redis
+arq==0.26.1
+redis[asyncio]==5.2.1
+
+# Rate limiting
+slowapi==0.1.9
+
+# Database
+chromadb==0.4.24
+
+# Resilience
+tenacity==9.0.0
+
+# Integrations
+docker==7.1.0
+twilio==9.4.0
+
+# Utilities
+python-multipart==0.0.20
+python-dotenv==1.0.1
+```
+
+---
+
+## Phase 1 — Redis Client + Settings
+
+### 1a. Add Redis URL to settings
+
+**File:** `agent/app/core/config/settings.py`
+
+Add inside the `Settings` class:
+
+```python
+# Redis
+REDIS_URL: str = "redis://localhost:6379"
+DEPLOYMENT_WATCH_MINUTES: int = 5
+JOB_RESULT_TTL_SECONDS: int = 604800  # 7 days — results survive for analytics/debugging
+DEDUP_WINDOW_SECONDS: int = 300       # 5 min dedup window
+MAX_QUEUE_LENGTH: int = 500           # backpressure limit
+```
+
+### 1b. Create Redis Client Module
+
+**File:** `agent/app/core/redis_client.py` — **[NEW]**
+
+```python
+"""
+Centralized Redis client.
+Single connection pool shared across the entire app.
+"""
+import redis.asyncio as aioredis
+from app.core.config.settings import settings
+import logging
+
+logger = logging.getLogger(__name__)
+_redis: aioredis.Redis | None = None
+
+
+async def get_redis() -> aioredis.Redis:
+    """Get or create the Redis connection (lazy singleton)."""
+    global _redis
+    if _redis is None:
+        _redis = aioredis.from_url(
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True
+        )
+        logger.info(f"Redis connected: {settings.REDIS_URL}")
+    return _redis
+
+
+async def close_redis():
+    """Close Redis connection on shutdown."""
+    global _redis
+    if _redis:
+        await _redis.aclose()
+        _redis = None
+```
+
+---
+
+## Phase 2 — ARQ Worker (The RCA Engine)
+
+This is the most important phase. The worker is a **separate process** that picks up jobs from Redis and runs the full RCA pipeline.
+
+### 2a. Create Queue Helper
+
+**File:** `agent/app/core/queue.py` — **[NEW]**
+
+> [!IMPORTANT]
+> Uses **ARQ's native `enqueue_job()`** — not manual `LPUSH`. This gives us built-in retry, job metadata tracking, timeout enforcement, and dead-letter handling for free.
+
+```python
+"""
+Job queue interface using ARQ native API.
+
+FastAPI calls enqueue_rca_job() → ARQ handles serialization,
+retry, timeout, and job tracking automatically.
+The ARQ Worker process picks up and executes run_rca_pipeline.
+"""
+import json
+import logging
+from arq import create_pool
+from arq.connections import RedisSettings
+from fastapi import HTTPException
+from app.core.config.settings import settings
+
+logger = logging.getLogger(__name__)
+
+# ARQ pool — lazily initialized, shared across all requests
+_arq_pool = None
+
+
+async def get_arq_pool():
+    """Get or create the ARQ Redis pool (singleton)."""
+    global _arq_pool
+    if _arq_pool is None:
+        _arq_pool = await create_pool(
+            RedisSettings.from_dsn(settings.REDIS_URL)
+        )
+        logger.info("ARQ pool initialized")
+    return _arq_pool
+
+
+async def close_arq_pool():
+    """Close ARQ pool on app shutdown."""
+    global _arq_pool
+    if _arq_pool:
+        await _arq_pool.aclose()
+        _arq_pool = None
+
+
+async def enqueue_rca_job(payload_dict: dict) -> str:
+    """
+    Enqueue an RCA job using ARQ's native job system.
+
+    ARQ handles:
+    - Serialization of payload
+    - Job ID generation and tracking
+    - Automatic retry on worker crash
+    - Job timeout enforcement
+    - Dead-letter if all retries exhausted
+
+    Returns the ARQ job_id string for client polling.
+    """
+    pool = await get_arq_pool()
+
+    # --- Backpressure: reject if queue is overloaded ---
+    queue_info = await pool.queued_jobs()
+    if len(queue_info) >= settings.MAX_QUEUE_LENGTH:
+        logger.warning(f"[QUEUE] Overloaded: {len(queue_info)} jobs pending")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "overloaded",
+                "queue_depth": len(queue_info),
+                "message": f"Queue full ({settings.MAX_QUEUE_LENGTH} max). Retry in 30 seconds."
+            }
+        )
+
+    # Enqueue via ARQ — returns a Job object with .job_id
+    job = await pool.enqueue_job(
+        "run_rca_pipeline",   # must match function name in worker.py
+        payload_dict,         # passed as first arg to the function
+        _job_try=1,
+        _defer_by=None,
+    )
+
+    logger.info(f"[QUEUE] Job {job.job_id} enqueued ({len(queue_info) + 1} in queue)")
+    return job.job_id
+
+
+async def get_job_result(job_id: str) -> dict | None:
+    """
+    Get job status/result from ARQ.
+    ARQ stores job info in Redis under arq:result:{job_id}.
+    """
+    pool = await get_arq_pool()
+    job = await pool.job(job_id)
+    if not job:
+        return None
+
+    job_info = await job.info()
+    if job_info is None:
+        return {"status": "queued", "job_id": job_id}
+
+    result = await job.result(timeout=0)  # non-blocking check
+
+    if result is not None:
+        return {"status": "complete", "job_id": job_id, "report": result}
+
+    return {"status": job_info.status.value, "job_id": job_id}
+```
+
+### 2b. Create the ARQ Worker
+
+**File:** `agent/worker.py` — **[NEW]** (sits next to `main.py`)
+
+```python
+"""
+OpsTron ARQ Worker — RCA Processing Engine
+
+Run this as a separate process:
+    arq worker.WorkerSettings
+
+This worker pulls jobs from Redis and runs the full RCA pipeline.
+It is completely independent of the FastAPI process.
+"""
+import json
+import logging
+import asyncio
+import hashlib
+from datetime import datetime
+from arq import create_pool
+from arq.connections import RedisSettings
+
+from app.core.config.settings import settings
+from app.core.orchestrator import RCAOrchestrator
+from app.models.error_models import ErrorPayload
+
+logger = logging.getLogger(__name__)
+
+# One orchestrator per worker process (not per request)
+_orchestrator: RCAOrchestrator | None = None
+
+
+def get_orchestrator() -> RCAOrchestrator:
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = RCAOrchestrator()
+    return _orchestrator
+
+
+async def run_rca_pipeline(ctx, payload_dict: dict):
+    """
+    ARQ task — called natively by ARQ when a job is dequeued.
+
+    Signature matches ARQ convention:
+      ctx:          ARQ job context (has ctx['redis'], ctx['job_id'])
+      payload_dict: the dict passed to pool.enqueue_job()
+
+    ARQ automatically:
+    - Passes ctx with redis connection and job metadata
+    - Retries this function on crash (up to max_tries)
+    - Enforces job_timeout — kills if exceeded
+    - Marks job as failed in dead-letter after max_tries exhausted
+
+    Return value is stored by ARQ and retrievable via job.result()
+    """
+    job_id = ctx["job_id"]  # ARQ injects this automatically
+    logger.info(f"[WORKER] Processing job {job_id}")
+
+    orchestrator = get_orchestrator()
+
+    try:
+        from app.models.error_models import ErrorPayload
+        payload = ErrorPayload(**payload_dict["error_payload"])
+        metadata = payload_dict.get("metadata", {})
+        deployment_context = payload_dict.get("deployment_context")
+
+        if deployment_context:
+            metadata["deployment_context"] = deployment_context
+
+        result = await orchestrator.analyze(
+            service=payload.service,
+            repo=payload_dict.get("repo", settings.DEFAULT_REPO),
+            log_text=payload_dict.get("log_text", ""),
+            metadata=metadata
+        )
+
+        logger.info(f"[WORKER] Job {job_id} complete")
+        # Return value stored by ARQ, retrieved via get_job_result()
+        return {
+            "status": "complete",
+            "report": result,
+            "completed_at": datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        logger.exception(f"[WORKER] Job {job_id} failed: {e}")
+        # Raising lets ARQ handle retry logic
+        raise
+
+
+class WorkerSettings:
+    """ARQ worker configuration."""
+    functions = [run_rca_pipeline]          # functions this worker handles
+    redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
+    max_jobs = 4                            # concurrent RCA jobs per worker process
+    job_timeout = 120                       # seconds — kill job if exceeded
+    max_tries = 3                           # retry failed jobs up to 3 times
+    keep_result = settings.JOB_RESULT_TTL_SECONDS  # how long ARQ keeps result in Redis
+    retry_jobs = True                       # retry on crash/timeout
+```
+
+---
+
+## Phase 3 — Decouple HTTP from RCA (Rewrite ingest.py)
+
+This is the core change. `ingest_error()` stops doing RCA — it only validates, deduplicates, and queues.
+
+### 3a. Key changes to ingest.py
+
+**File:** `agent/app/api/routes/ingest.py`
+
+**What changes:**
+1. Remove `orchestrator = RCAOrchestrator()` at module level
+2. `ingest_error()` returns `202 Accepted` with `job_id` instead of waiting for RCA
+3. `DeploymentWatcher` state moves to Redis
+4. Add `GET /rca/{job_id}` polling endpoint
+5. Add `GET /rca-history` reads from Redis list instead of in-memory list
+
+**New `ingest_error()` skeleton:**
+
+```python
+@router.post("/ingest-error", status_code=202)
+async def ingest_error(payload: ErrorPayload):
+    """
+    Accepts error, queues RCA job, returns immediately.
+    Client polls GET /rca/{job_id} for result.
+    """
+    redis = await get_redis()
+
+    # --- Deduplication ---
+    fingerprint = _make_fingerprint(payload)
+    existing_job = await redis.get(f"rca:dedup:{fingerprint}")
+    if existing_job:
+        logger.info(f"Duplicate error suppressed: {fingerprint}")
+        return {"status": "duplicate", "job_id": existing_job}
+
+    # --- Deployment context (from Redis, not RAM) ---
+    deployment_context = await _get_active_deployment_from_redis(redis)
+
+    # --- Build job payload ---
+    log_text = _prepare_log_text(payload)
+    if deployment_context:
+        log_text = _add_deployment_context_to_logs(log_text, deployment_context)
+
+    job_payload = {
+        "error_payload": payload.model_dump(),
+        "log_text": log_text,
+        "repo": deployment_context["repository"] if deployment_context else settings.DEFAULT_REPO,
+        "deployment_context": deployment_context,
+        "metadata": {
+            "environment": payload.env,
+            "endpoint": payload.endpoint,
+            "method": payload.method,
+        }
+    }
+
+    # --- Enqueue via ARQ native API (includes backpressure check) ---
+    # Raises HTTP 503 automatically if queue > MAX_QUEUE_LENGTH
+    job_id = await enqueue_rca_job(job_payload)
+
+    # --- Store dedup key so duplicate errors map to same job ---
+    await redis.setex(f"rca:dedup:{fingerprint}", settings.DEDUP_WINDOW_SECONDS, job_id)
+
+    return {
+        "status": "queued",
+        "job_id": job_id,
+        "poll_url": f"/rca/{job_id}"
+    }
+
+
+def _make_fingerprint(payload: ErrorPayload) -> str:
+    """Deduplicate same error within 5-minute window."""
+    import hashlib
+    from datetime import datetime
+    bucket = datetime.utcnow().strftime("%Y%m%d%H%M")[:-1]  # 5-min bucket
+    raw = f"{payload.service}:{payload.error}:{bucket}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+```
+
+### 3b. Add polling endpoint
+
+```python
+@router.get("/rca/{job_id}")
+async def get_rca_result(job_id: str):
+    """Poll for RCA job result."""
+    result = await get_job_result(job_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+    return result
+```
+
+### 3c. Move DeploymentWatcher to Redis
+
+Replace the in-memory `DeploymentWatcher` class with Redis-backed helpers:
+
+```python
+async def _register_deployment_in_redis(redis, payload: DeploymentPayload) -> str:
+    deployment_id = f"deploy-{uuid.uuid4().hex[:8]}"
+    record = {
+        "deployment_id": deployment_id,
+        "commit_sha": payload.commit_sha,
+        "repository": payload.repository,
+        "author": payload.author,
+        "message": payload.message,
+        "branch": payload.branch,
+        "registered_at": datetime.utcnow().isoformat(),
+    }
+    ttl = settings.DEPLOYMENT_WATCH_MINUTES * 60
+    await redis.setex(f"deploy:active:{deployment_id}", ttl, json.dumps(record))
+    await redis.setex("deploy:current", ttl, deployment_id)  # pointer to latest
+    return deployment_id
+
+
+async def _get_active_deployment_from_redis(redis) -> dict | None:
+    dep_id = await redis.get("deploy:current")
+    if not dep_id:
+        return None
+    raw = await redis.get(f"deploy:active:{dep_id}")
+    return json.loads(raw) if raw else None
+```
+
+---
+
+## Phase 4 — Parallel Agent Execution
+
+**File:** `agent/app/core/orchestrator.py`
+
+Run LogAgent and CommitAgent in parallel (they are independent). RunbookAgent needs LogAgent output, so it runs after.
+
+```python
+async def analyze(self, service, repo, log_text, metadata=None):
+
+    # Phase 1: Parallel — LogAgent + CommitAgent
+    log_task = self.log_agent.analyze(log_text)
+    commit_task = self.commit_agent.analyze(repo)
+
+    log_analysis, commit_analysis = await asyncio.gather(
+        log_task, commit_task, return_exceptions=True
+    )
+
+    # Handle failures gracefully
+    if isinstance(log_analysis, Exception):
+        logger.error(f"LogAgent failed: {log_analysis}")
+        log_analysis = {"error_signals": [], "key_errors": [], "patterns": []}
+
+    if isinstance(commit_analysis, Exception):
+        logger.error(f"CommitAgent failed: {commit_analysis}")
+        commit_analysis = {"commits": [], "error": str(commit_analysis)}
+
+    # Phase 2: RunbookAgent (needs log signals)
+    try:
+        error_signals = log_analysis.get("error_signals", [])
+        runbook_results = await self.runbook_agent.search(error_signals)
+    except Exception as e:
+        logger.error(f"RunbookAgent failed: {e}")
+        runbook_results = []
+
+    # Phase 3: Synthesize
+    rca_report = await self.synthesizer_agent.synthesize(
+        service=service,
+        log_analysis=log_analysis,
+        commit_analysis=commit_analysis,
+        runbook_results=runbook_results,
+        metadata=metadata
+    )
+
+    # Voice alert (if deployment regression)
+    if rca_report.get("is_deployment_caused") or rca_report.get("is_deployment_regression"):
+        asyncio.create_task(self._trigger_voice_alert(...))
+
+    return rca_report
+```
+
+---
+
+## Phase 5 — Retry + Graceful Degradation
+
+### 5a. LLM retries
+
+**File:** `agent/app/core/llm.py`
+
+```python
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import httpx
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((httpx.TimeoutException, Exception)),
+    reraise=True
+)
+async def _invoke_groq(self, prompt: str) -> str:
+    messages = [HumanMessage(content=prompt)]
+    response = await self.model.ainvoke(messages)
+    return response.content
+```
+
+### 5b. GitHub API timeout
+
+**File:** `agent/app/utils/github_api.py`
+
+Add `timeout=aiohttp.ClientTimeout(total=10)` to all `aiohttp.ClientSession()` calls so a GitHub API hang doesn't block forever:
+
+```python
+async with aiohttp.ClientSession(
+    timeout=aiohttp.ClientTimeout(total=10)
+) as session:
+```
+
+---
+
+## Phase 6 — Fix Auth Middleware Session Store
+
+**File:** `agent/app/api/middleware/auth.py`
+
+Replace `active_sessions: dict = {}` with Redis-backed sessions. Same pattern as DeploymentWatcher migration.
+
+```python
+async def create_session(github_user: dict, github_access_token: str) -> str:
+    token = secrets.token_urlsafe(32)
+    redis = await get_redis()
+    session_data = {
+        "github_id": github_user.get("id"),
+        "login": github_user.get("login"),
+        "name": github_user.get("name"),
+        "avatar_url": github_user.get("avatar_url"),
+        "email": github_user.get("email"),
+        "github_access_token": github_access_token,
+    }
+    await redis.setex(f"session:{token}", 86400, json.dumps(session_data))  # 24hr TTL
+    return token
+
+
+async def get_session(token: str) -> dict | None:
+    redis = await get_redis()
+    raw = await redis.get(f"session:{token}")
+    return json.loads(raw) if raw else None
+```
+
+---
+
+## Phase 7 — Fix main.py lifespan + add API key auth
+
+### 7a. Fix deprecated on_event
+
+**File:** `agent/main.py`
+
+```python
+from contextlib import asynccontextmanager
+from app.core.redis_client import get_redis, close_redis
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await get_redis()   # warm up connection
+    logger.info("OpsTron started. Redis connected.")
+    yield
+    # Shutdown
+    await close_redis()
+    logger.info("OpsTron shutdown. Redis closed.")
+
+app = FastAPI(lifespan=lifespan, ...)
+```
+
+### 7b. Add API key auth to Docker agent endpoint
+
+**File:** `agent/app/api/routes/ingest.py`
+
+```python
+async def verify_api_key(request: Request):
+    key = request.headers.get("X-API-Key")
+    if not key or key != settings.SERVICE_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+@router.post("/agent/logs/ingest", dependencies=[Depends(verify_api_key)])
+async def ingest_agent_logs(payload: AgentLogPayload):
+    ...
+```
+
+---
+
+## Phase 9 — Rate Limiting (slowapi)
+
+**Why:** Without this, a single misconfigured client or a retry loop can flood `/ingest-error` with thousands of requests per minute, overwhelming the queue and costing you Groq credits.
+
+### 9a. Install + configure slowapi
+
+**File:** `agent/main.py`
+
+```python
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.limiter = limiter          # attach to app state
+    await get_arq_pool()                 # warm up ARQ
+    await get_redis()                    # warm up Redis
+    yield
+    await close_arq_pool()
+    await close_redis()
+
+app = FastAPI(lifespan=lifespan, ...)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+```
+
+### 9b. Apply limits to ingestion endpoints
+
+**File:** `agent/app/api/routes/ingest.py`
+
+```python
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+# 60 errors/minute per IP — prevents accidental retry loops
+@router.post("/ingest-error", status_code=202)
+@limiter.limit("60/minute")
+async def ingest_error(request: Request, payload: ErrorPayload):
+    ...
+
+# 120 log batches/minute per IP — forwarder sends every 5s = 12/min, 10x headroom
+@router.post("/agent/logs/ingest", dependencies=[Depends(verify_api_key)])
+@limiter.limit("120/minute")
+async def ingest_agent_logs(request: Request, payload: AgentLogPayload):
+    ...
+```
+
+> [!NOTE]
+> `request: Request` must be the first parameter when using `@limiter.limit()` — slowapi requires it to read the client IP.
+
+---
+
+## Phase 8 — Tests
+
+**New directory:** `agent/tests/`
+
+### Files to create:
+
+#### [NEW] `tests/unit/test_log_agent.py`
+- Mock `LLMClient.invoke_structured` → return fake JSON
+- Test `_pre_filter_logs` with 100-line input — verify it reduces to error lines only
+- Test with no errors in logs → returns first+last 10 lines
+
+#### [NEW] `tests/unit/test_deployment_watcher.py`
+- Test `_register_deployment_in_redis` stores correct TTL
+- Test `_get_active_deployment_from_redis` returns None after TTL
+- Use `fakeredis` (async) to avoid needing real Redis in tests
+
+#### [NEW] `tests/unit/test_deduplication.py`
+- Same error sent twice in same 5-min window → second call returns `status: duplicate`
+- Same error sent in different 5-min window → treated as new job
+
+#### [NEW] `tests/integration/test_ingest_pipeline.py`
+- `POST /ingest-error` → returns 202 with `job_id` in < 100ms
+- `GET /rca/{job_id}` → returns `status: queued` immediately
+- Mock entire orchestrator → worker completes → `GET /rca/{job_id}` returns `status: complete`
+
+#### [NEW] `tests/integration/test_webhook_flow.py`
+- `POST /notify-deployment` with valid HMAC → 200, deployment stored in Redis
+- `POST /notify-deployment` with invalid HMAC → 403
+- `POST /ingest-error` during active watch → `deployment_context` present in queued job
+
+---
+
+## How to Run After Implementation
+
+```bash
+# Terminal 1 — Redis (if not running as a system service)
+redis-server
+
+# Terminal 2 — FastAPI (intake only — validates, queues, returns fast)
+cd agent
+python main.py
+
+# Terminal 3 — ARQ Worker (RCA engine — separate process)
+cd agent
+arq worker.WorkerSettings
+
+# Optional: scale workers horizontally (run on separate machines or processes)
+arq worker.WorkerSettings  # Worker 2
+arq worker.WorkerSettings  # Worker 3
+```
+
+> [!TIP]
+> Workers can be scaled independently of FastAPI. Add more workers to increase RCA throughput — they all pull from the same Redis queue.
+
+---
+
+## Verification Plan
+
+### Automated
+```bash
+pytest tests/unit/ -v                          # fast, no Redis needed (fakeredis)
+pytest tests/integration/ -v                  # needs Redis running
+```
+
+### Manual end-to-end
+1. Start Redis, FastAPI, ARQ Worker
+2. `curl -X POST http://localhost:8001/ingest-error -d '{"service":"test","error":"NullPointerException"}'`
+3. Verify: response comes back in < 200ms with `job_id`
+4. `curl http://localhost:8001/rca/{job_id}` — should show `queued` then `processing` then `complete`
+5. Kill FastAPI mid-request → restart → job result still in Redis ✅
+6. Send same error twice → second response says `duplicate` ✅
+7. Send 10 errors simultaneously → all queued, worker processes them one at a time ✅

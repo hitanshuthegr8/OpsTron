@@ -509,7 +509,7 @@
                         - /var/run/docker.sock:/var/run/docker.sock:ro
                         - ./opstron_forwarder.py:/app/opstron_forwarder.py
                         <span class="kw">environment</span>:
-                        OPSTRON_BACKEND_URL: <span class="st">"http://your-opstron-server:8001/agent/logs/ingest"</span>
+                        OPSTRON_BACKEND_URL: <span class="st">"https://opstron-production.up.railway.app/agent/logs/ingest"</span>
                         OPSTRON_API_KEY: <span class="st">"your_api_key"</span>
                         <span class="kw">command</span>: sh -c "pip install requests docker -q && python
                         /app/opstron_forwarder.py"
@@ -574,7 +574,7 @@
 
     <script>
         // ---- Config ----
-        const BACKEND = 'http://localhost:8001';
+        const BACKEND = 'https://opstron-production.up.railway.app';
         let opsToken = localStorage.getItem('ops_token') || '';
 
         // ---- State ----
