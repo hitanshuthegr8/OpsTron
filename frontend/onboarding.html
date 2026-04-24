@@ -504,7 +504,7 @@
                 <div class="code-wrap">
                     <button class="copy-btn" onclick="copyCode('dc-code')">Copy</button>
                     <div class="code-block" id="dc-code">  <span class="kw">opstron-agent</span>:
-    <span class="kw">image</span>: opstron/agent:latest
+    <span class="kw">image</span>: hitanshurathi/opstron-agent:latest
     <span class="kw">restart</span>: unless-stopped
     <span class="kw">environment</span>:
       OPSTRON_API_KEY: <span class="st" id="inline-api-key">"your_api_key"</span>
@@ -537,9 +537,20 @@
                 </p>
             </div>
 
-            <div style="margin-top:.5rem;">
-                <button class="btn btn-secondary" onclick="simulateDockerConnect()">
-                    🧪 Simulate Connection (for local testing)
+            <!-- Agent connection status -->
+            <div id="agent-status-card" class="info-card" style="margin-top:1rem;border:1px solid var(--border);">
+                <div style="display:flex;align-items:center;gap:.75rem;">
+                    <div id="agent-status-dot" style="width:12px;height:12px;border-radius:50%;background:var(--warning);flex-shrink:0;animation:pulse 1.5s infinite;"></div>
+                    <div>
+                        <div id="agent-status-text" style="font-weight:600;color:var(--text-primary);">Waiting for agent connection...</div>
+                        <div id="agent-status-sub" style="font-size:.8rem;color:var(--text-muted);margin-top:.2rem;">Start the Docker agent with your API key above. Auto-detects when connected.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:.5rem;display:flex;gap:.75rem;flex-wrap:wrap;">
+                <button class="btn btn-secondary" onclick="simulateDockerConnect()" id="btn-simulate">
+                    🧪 Skip (for local testing)
                 </button>
             </div>
         </div>
@@ -745,8 +756,55 @@
         }
 
         function simulateDockerConnect() {
-            toast('Docker agent connected!', 'success');
+            toast('Agent connection confirmed!', 'success');
             setTimeout(() => { currentStep = 3; showStep(3); }, 800);
+        }
+
+        // ---- Real agent status polling ----
+        let _agentPollTimer = null;
+
+        function startAgentPolling() {
+            if (_agentPollTimer) return;  // already polling
+            const apiKey = localStorage.getItem('ops_agent_key') || '';
+            if (!apiKey) return;  // no key yet, skip
+
+            _agentPollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch(`${BACKEND}/agent/status`, {
+                        headers: { 'X-API-Key': apiKey }
+                    });
+                    if (!res.ok) return;
+                    const data = await res.json();
+
+                    if (data.status === 'connected' || data.agent_connected === true) {
+                        // Agent is live!
+                        clearInterval(_agentPollTimer);
+                        _agentPollTimer = null;
+                        onAgentConnected(data);
+                    }
+                } catch (e) {
+                    // network hiccup, keep polling
+                }
+            }, 3000);  // poll every 3 seconds
+        }
+
+        function stopAgentPolling() {
+            if (_agentPollTimer) { clearInterval(_agentPollTimer); _agentPollTimer = null; }
+        }
+
+        function onAgentConnected(data) {
+            const dot  = document.getElementById('agent-status-dot');
+            const text = document.getElementById('agent-status-text');
+            const sub  = document.getElementById('agent-status-sub');
+            const btn  = document.getElementById('btn-simulate');
+
+            if (dot)  { dot.style.background = 'var(--success)'; dot.style.animation = 'none'; }
+            if (text) text.textContent = '✅ Agent connected!';
+            if (sub)  sub.textContent = `Monitoring ${data.monitored_containers?.length ?? 0} container(s). Advancing...`;
+            if (btn)  btn.style.display = 'none';
+
+            toast('Agent connected! Moving to final step...', 'success');
+            setTimeout(() => { currentStep = 3; showStep(3); }, 1500);
         }
 
         // ---- Utilities ----

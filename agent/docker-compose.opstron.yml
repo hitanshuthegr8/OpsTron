@@ -19,7 +19,7 @@
 
 services:
   opstron-agent:
-    image: opstron/agent:latest
+    image: hitanshurathi/opstron-agent:latest
     container_name: opstron-agent
     restart: unless-stopped
 
