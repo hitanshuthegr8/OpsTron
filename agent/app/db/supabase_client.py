@@ -29,15 +29,18 @@ class SupabaseClient:
         """Get or create Supabase client singleton."""
         if cls._instance is None:
             if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
-                logger.warning("Supabase not configured - using mock client")
+                logger.warning("Supabase not configured - running in stateless mode")
                 return None
-            
-            cls._instance = create_client(
-                settings.SUPABASE_URL,
-                settings.SUPABASE_SERVICE_KEY
-            )
-            logger.info("Supabase client initialized")
-        
+            try:
+                cls._instance = create_client(
+                    settings.SUPABASE_URL,
+                    settings.SUPABASE_SERVICE_KEY
+                )
+                logger.info("✅ Supabase client initialized")
+            except Exception as e:
+                logger.error(f"Supabase init failed (running stateless): {e}")
+                return None
+
         return cls._instance
     
     @classmethod
