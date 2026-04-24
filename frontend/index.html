@@ -221,6 +221,25 @@
     <!-- Toast Container -->
     <div id="toast-container" class="toast-container"></div>
 
+    <!-- RCA Detail Modal -->
+    <div id="rca-modal-overlay" class="rca-modal-overlay" role="dialog" aria-modal="true" aria-label="RCA Report Detail">
+        <div class="rca-modal" id="rca-modal">
+            <!-- Header -->
+            <div class="rca-modal-header">
+                <div class="rca-modal-title">
+                    <div class="rca-modal-service" id="rca-modal-service">Service Name</div>
+                    <div class="rca-modal-pills" id="rca-modal-pills"></div>
+                </div>
+                <button class="rca-modal-close" id="rca-modal-close" aria-label="Close">✕</button>
+            </div>
+
+            <!-- Scrollable Body -->
+            <div class="rca-modal-body" id="rca-modal-body">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
     <script src="src/js/app.js"></script>
 </body>
 
