@@ -18,7 +18,8 @@ from app.models.error_models import ErrorPayload, IngestResponse, DeploymentPayl
 from app.core.orchestrator import RCAOrchestrator
 from app.core.config.settings import settings
 from app.utils.github_api import GitHubClient
-from app.api.middleware.auth import GitHubWebhookAuth, AgentKeyAuth, verify_api_key
+from app.api.middleware.auth import GitHubWebhookAuth, AgentKeyAuth, GitHubAuth, verify_api_key
+from app.db.supabase_client import db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -80,29 +81,53 @@ class DeploymentWatcher:
         
         return deployment_id
     
-    def get_active_deployment(self) -> Optional[Dict[str, Any]]:
-        """Get the currently active deployment (if in watch mode)."""
+    async def get_active_deployment(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the currently active deployment (if in watch mode).
+
+        Fast path: in-memory dict (sub-ms).
+        DB fallback: if memory was cleared (Render restart), queries Supabase
+        for any deployment with status='watching' created in the last 5 minutes.
+        """
         now = datetime.utcnow()
-        
-        # Clean up expired deployments
-        expired = []
-        for dep_id, dep in self.active_deployments.items():
-            watch_until = datetime.fromisoformat(dep["watch_until"])
-            if now > watch_until:
-                expired.append(dep_id)
-        
+
+        # Clean up expired in-memory entries
+        expired = [
+            dep_id for dep_id, dep in self.active_deployments.items()
+            if now > datetime.fromisoformat(dep["watch_until"])
+        ]
         for dep_id in expired:
             logger.info(f"[DEPLOY] Watch mode expired for {dep_id}")
             del self.active_deployments[dep_id]
-        
-        # Return the most recent active deployment
+
+        # Fast path
         if self.active_deployments:
-            most_recent = max(
-                self.active_deployments.values(),
-                key=lambda x: x["registered_at"]
-            )
-            return most_recent
-        
+            return max(self.active_deployments.values(), key=lambda x: x["registered_at"])
+
+        # DB fallback — memory was wiped (Render restart)
+        try:
+            from app.db.supabase_client import db as _db
+            db_deploy = await _db.get_active_deployment_db()
+            if db_deploy:
+                dep_id = db_deploy.get("id", "deploy-recovered")
+                watch_until = (now + timedelta(minutes=1)).isoformat()  # short remaining window
+                recovered = {
+                    "deployment_id": str(dep_id),
+                    "commit_sha":    db_deploy.get("commit_sha", ""),
+                    "repository":    db_deploy.get("repository", ""),
+                    "author":        db_deploy.get("author", "unknown"),
+                    "message":       db_deploy.get("message", ""),
+                    "branch":        db_deploy.get("branch", ""),
+                    "registered_at": db_deploy.get("created_at", now.isoformat()),
+                    "watch_until":   watch_until,
+                    "errors_during_watch": [],
+                }
+                self.active_deployments[str(dep_id)] = recovered
+                logger.info(f"[DEPLOY] Active deployment restored from DB: {recovered['commit_sha'][:7]}")
+                return recovered
+        except Exception as e:
+            logger.debug(f"[DEPLOY] DB fallback failed: {e}")
+
         return None
     
     def record_error_during_watch(self, deployment_id: str, error_details: Dict[str, Any]):
@@ -115,7 +140,7 @@ class DeploymentWatcher:
 deployment_watcher = DeploymentWatcher(watch_duration_minutes=5)
 
 @router.post("/ingest-error", response_model=IngestResponse)
-async def ingest_error(payload: ErrorPayload):
+async def ingest_error(payload: ErrorPayload, _agent: dict = AgentKeyAuth):
     """
     MVP3 Automated Error Ingestion Endpoint.
     
@@ -141,7 +166,7 @@ async def ingest_error(payload: ErrorPayload):
     logger.info(f"[{request_id}] Environment: {payload.env}")
     
     # MVP4: Check if we're in deployment watch mode
-    active_deployment = deployment_watcher.get_active_deployment()
+    active_deployment = await deployment_watcher.get_active_deployment()
     deployment_context = None
     
     if active_deployment:
@@ -237,6 +262,19 @@ async def ingest_error(payload: ErrorPayload):
         # Trim history if too large
         if len(RCA_HISTORY) > MAX_HISTORY_SIZE:
             RCA_HISTORY.pop()
+
+        # Persist to Supabase (non-blocking, fails gracefully)
+        severity = "high" if deployment_context else "medium"
+        await db.create_rca_log({
+            "service":             payload.service,
+            "error":               payload.error,
+            "stacktrace":          payload.stacktrace or "",
+            "rca_report":          result,
+            "severity":            severity,
+            "endpoint":            payload.endpoint or "",
+            "request_id":          request_id,
+            "is_deployment_error": deployment_context is not None,
+        })
         
         return IngestResponse(
             status=status,
@@ -401,8 +439,18 @@ async def notify_deployment(request: Request):
     
     # Register the deployment
     deployment_id = deployment_watcher.register_deployment(parsed_payload)
-    active = deployment_watcher.get_active_deployment()
-    
+    active = await deployment_watcher.get_active_deployment()
+
+    # Persist deployment to Supabase
+    await db.create_deployment({
+        "commit_sha": parsed_payload.commit_sha,
+        "repository": parsed_payload.repository,
+        "author":     parsed_payload.author,
+        "branch":     parsed_payload.branch,
+        "message":    parsed_payload.message,
+        "status":     "watching",
+    })
+
     return DeploymentResponse(
         status="watching",
         deployment_id=deployment_id,
@@ -413,14 +461,14 @@ async def notify_deployment(request: Request):
 
 
 @router.get("/deployment-status")
-async def get_deployment_status():
+async def get_deployment_status(_user: dict = GitHubAuth):
     """
     Get current deployment watch status.
     
     Returns whether OpsTron is currently in watch mode and details
     about the active deployment being monitored.
     """
-    active = deployment_watcher.get_active_deployment()
+    active = await deployment_watcher.get_active_deployment()
     
     if active:
         return {
@@ -443,7 +491,7 @@ async def get_deployment_status():
 
 
 @router.get("/deployment-history")
-async def get_deployment_history(limit: int = 20):
+async def get_deployment_history(limit: int = 20, _user: dict = GitHubAuth):
     """
     Get deployment history with error correlation data.
     
@@ -457,22 +505,25 @@ async def get_deployment_history(limit: int = 20):
 
 
 @router.get("/rca-history")
-async def get_rca_history(limit: int = 20):
+async def get_rca_history(limit: int = 20, _user: dict = GitHubAuth):
     """
     Get RCA history for dashboard display.
-    
-    Returns the most recent RCA reports that have been generated
-    from error ingestion.
-    
-    Args:
-        limit: Maximum number of reports to return (default 20).
-        
-    Returns:
-        List of RCA reports with metadata.
+    Tries Supabase first for persistent history; falls back to in-memory.
     """
+    # Try persistent store first
+    db_reports = await db.get_rca_logs(limit=limit)
+    if db_reports:
+        return {
+            "total": len(db_reports),
+            "reports": db_reports,
+            "source": "supabase"
+        }
+
+    # Fallback: in-memory (e.g. Supabase not configured)
     return {
         "total": len(RCA_HISTORY),
-        "reports": RCA_HISTORY[:limit]
+        "reports": RCA_HISTORY[:limit],
+        "source": "memory"
     }
 
 
@@ -481,7 +532,7 @@ async def get_rca_history(limit: int = 20):
 # =============================================================================
 
 @router.post("/agent/logs/ingest", response_model=AgentLogResponse)
-async def ingest_agent_logs(payload: AgentLogPayload):
+async def ingest_agent_logs(payload: AgentLogPayload, agent_identity: dict = AgentKeyAuth):
     """
     Endpoint for the lightweight OpsTron Docker Agent.
     
@@ -494,7 +545,7 @@ async def ingest_agent_logs(payload: AgentLogPayload):
     
     # Check if we should feed this into RCA
     # If the user is in an active deployment watch, we check logs for errors
-    active_deployment = deployment_watcher.get_active_deployment()
+    active_deployment = await deployment_watcher.get_active_deployment()
     
     if active_deployment:
         logger.info(f"[DOCKER_AGENT] Active deployment watch found. Analyzing {payload.container_name} logs.")
@@ -549,22 +600,40 @@ async def agent_heartbeat(
     """
     Called by opstron-agent on startup and every 60 seconds.
 
-    Stores last-seen timestamp scoped per user_id.
-    Key: agent:{user_id}:heartbeat
-    Two users' agents never overwrite each other.
+    Write-through cache: updates in-memory dict (fast reads) AND
+    Supabase (survives Render restarts). Two users' agents never overlap.
     """
     user_id = agent_identity["user_id"]
-
-    _heartbeats[user_id] = {
-        "last_seen": datetime.utcnow().isoformat(),
-        "hostname": payload.hostname,
-        "agent_version": payload.agent_version,
+    heartbeat_data = {
+        "last_seen":           datetime.utcnow().isoformat(),
+        "hostname":            payload.hostname,
+        "agent_version":       payload.agent_version,
         "monitored_containers": payload.monitored_containers,
-        "status": "connected",
+        "status":              "connected",
     }
+
+    # Fast path: update in-memory cache
+    _heartbeats[user_id] = heartbeat_data
+
+    # Persistent path: write to Supabase so status survives restarts
+    await db.upsert_heartbeat(user_id, heartbeat_data)
 
     logger.info(f"[HEARTBEAT] user={user_id} host={payload.hostname} v={payload.agent_version}")
     return {"status": "ok", "message": "Heartbeat received"}
+
+
+async def _resolve_heartbeat(user_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Shared helper: get heartbeat data for user_id.
+    Fast path: in-memory cache. Slow path: Supabase fallback after restart.
+    """
+    data = _heartbeats.get(user_id)
+    if not data:
+        # DB fallback — memory cleared on restart
+        data = await db.get_heartbeat(user_id)
+        if data:
+            _heartbeats[user_id] = data   # warm cache
+    return data
 
 
 @router.get("/agent/status")
@@ -573,9 +642,12 @@ async def get_agent_status(user: dict = AgentKeyAuth):
     Returns the current user's agent status.
     Called by the onboarding page every 2 seconds while waiting for agent.
     Called by the dashboard every 30 seconds to show status badge.
+
+    DB fallback: if in-memory heartbeat is missing (Render restart), reads
+    the last heartbeat stored in Supabase before returning 'offline'.
     """
     user_id = user["user_id"]
-    data = _heartbeats.get(user_id)
+    data = await _resolve_heartbeat(user_id)
 
     if not data:
         return {
@@ -605,11 +677,36 @@ async def get_agent_status(user: dict = AgentKeyAuth):
 
 
 @router.get("/agent/status/by-session")
-async def get_agent_status_by_session(user: dict = AgentKeyAuth):
+async def get_agent_status_by_session(user: dict = GitHubAuth):
     """
-    Same as /agent/status but accepts Bearer token (GitHub session)
+    Same as /agent/status but accepts Bearer token (GitHub OAuth session)
     instead of X-API-Key. Used by the onboarding page which has the
     session token but not the agent key yet.
     """
-    from app.api.middleware.auth import get_session
-    return await get_agent_status(user)
+    user_id = user["github_id"]
+    data = await _resolve_heartbeat(user_id)
+
+    if not data:
+        return {
+            "status": "offline",
+            "message": "No agent connected. Run the opstron-agent Docker container.",
+        }
+
+    last_seen = datetime.fromisoformat(data["last_seen"])
+    age_seconds = (datetime.utcnow() - last_seen).total_seconds()
+
+    if age_seconds > 90:
+        return {
+            "status": "offline",
+            "message": f"Agent last seen {int(age_seconds)}s ago. May have stopped.",
+            "last_seen": data["last_seen"],
+        }
+
+    return {
+        "status": "connected",
+        "last_seen": data["last_seen"],
+        "hostname": data["hostname"],
+        "agent_version": data["agent_version"],
+        "age_seconds": int(age_seconds),
+        "monitored_containers": data.get("monitored_containers", []),
+    }

@@ -319,3 +319,21 @@ BEGIN
   END IF;
 END $$;
 
+
+-- =============================================================================
+-- Add agent heartbeat columns to opstron_users (idempotent migration)
+-- Replaces the in-memory _heartbeats dict so agent status survives restarts.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'opstron_users' AND column_name = 'agent_last_seen'
+  ) THEN
+    ALTER TABLE opstron_users ADD COLUMN agent_last_seen   TIMESTAMPTZ;
+    ALTER TABLE opstron_users ADD COLUMN agent_hostname    TEXT;
+    ALTER TABLE opstron_users ADD COLUMN agent_version     TEXT;
+    ALTER TABLE opstron_users ADD COLUMN agent_containers  JSONB DEFAULT '[]'::jsonb;
+    CREATE INDEX idx_opstron_users_agent_seen ON opstron_users(agent_last_seen DESC);
+  END IF;
+END $$;

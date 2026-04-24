@@ -154,8 +154,8 @@ async def verify_api_key(request: Request) -> dict:
     """
     Verify X-API-Key header sent by the Docker agent.
 
-    Looks up which user owns this key and returns their identity.
-    Each user has a unique key — two users' agents never conflict.
+    Looks up which user owns this key — first from in-memory cache (fast),
+    then from Supabase (DB fallback for after Render restarts).
 
     Returns:
         dict: {"user_id": github_id, "api_key": key}
@@ -165,11 +165,25 @@ async def verify_api_key(request: Request) -> dict:
     if not key:
         raise HTTPException(status_code=401, detail="Missing X-API-Key header")
 
-    # Look up the user this key belongs to
+    # --- Fast path: in-memory cache ---
     user_id = api_key_to_user.get(key)
 
-    # Fallback: also accept the legacy SERVICE_API_KEY from .env
-    # (for backwards compatibility during transition)
+    if not user_id:
+        # --- DB fallback: cache was cleared (Render restart) ---
+        logger.info("[Auth] Agent key not in memory — attempting DB fallback lookup")
+        try:
+            from app.db.supabase_client import db
+            user_data = await db.get_user_by_api_key(key)
+        except Exception as e:
+            logger.warning(f"[Auth] Agent key DB fallback failed: {e}")
+            user_data = None
+
+        if user_data:
+            user_id = user_data.get("github_id")
+            api_key_to_user[key] = user_id   # warm the in-memory cache
+            logger.info(f"[Auth] Agent key restored from DB for user={user_id}")
+
+    # --- Legacy SERVICE_API_KEY compatibility ---
     if not user_id and settings.SERVICE_API_KEY and key == settings.SERVICE_API_KEY:
         user_id = "legacy"
 
@@ -208,9 +222,8 @@ async def verify_github_webhook_hmac(request: Request) -> bool:
 
     # Constant-time comparison to prevent timing attacks
     if not hmac.compare_digest(signature_header, expected_signature):
-        logger.warning(f"Invalid webhook signature attempt from {request.client.host}")
-        # Permissive for testing
-        return True
+        logger.warning(f"[Webhook] Invalid signature from {request.client.host} — rejecting")
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     return True
 

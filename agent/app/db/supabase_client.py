@@ -315,6 +315,119 @@ class Database:
             return False
 
     # =========================================================================
+    # User Helpers
+    # =========================================================================
+
+    async def get_user_by_github_id(self, github_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a user row by their github_id.
+        Used during OAuth login to retrieve their existing agent_api_key
+        so we don't generate a new one and break running agents.
+        """
+        if not self.client:
+            return None
+        try:
+            result = (
+                self.client.table("opstron_users")
+                .select("github_id, login, agent_api_key, session_token")
+                .eq("github_id", github_id)
+                .single()
+                .execute()
+            )
+            return result.data
+        except Exception as e:
+            logger.debug(f"[DB] get_user_by_github_id miss for {github_id}: {e}")
+            return None
+
+    # =========================================================================
+    # Agent Heartbeat Persistence (replaces in-memory _heartbeats dict)
+    # =========================================================================
+
+    async def upsert_heartbeat(self, user_id: str, data: Dict[str, Any]) -> bool:
+        """
+        Persist an agent heartbeat to Supabase.
+
+        Stores heartbeat fields directly on the opstron_users row
+        (agent_last_seen, agent_hostname, agent_version, agent_containers).
+        Survives Render restarts — dashboard always shows fresh status.
+        """
+        if not self.client:
+            return False
+        try:
+            self.client.table("opstron_users").update({
+                "agent_last_seen":   data.get("last_seen"),
+                "agent_hostname":    data.get("hostname"),
+                "agent_version":     data.get("agent_version"),
+                "agent_containers":  data.get("monitored_containers", []),
+            }).eq("github_id", user_id).execute()
+            logger.info(f"[DB] Heartbeat persisted for user={user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[DB] upsert_heartbeat failed: {e}")
+            return False
+
+    async def get_heartbeat(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve the last agent heartbeat for a user.
+
+        Returns None if no heartbeat has been stored (agent never connected).
+        """
+        if not self.client:
+            return None
+        try:
+            result = (
+                self.client.table("opstron_users")
+                .select("agent_last_seen, agent_hostname, agent_version, agent_containers")
+                .eq("github_id", user_id)
+                .single()
+                .execute()
+            )
+            row = result.data
+            if not row or not row.get("agent_last_seen"):
+                return None
+            return {
+                "last_seen":           row["agent_last_seen"],
+                "hostname":            row.get("agent_hostname", "unknown"),
+                "agent_version":       row.get("agent_version", "unknown"),
+                "monitored_containers": row.get("agent_containers") or [],
+                "status":              "connected",
+            }
+        except Exception as e:
+            logger.debug(f"[DB] get_heartbeat miss for {user_id}: {e}")
+            return None
+
+    # =========================================================================
+    # Active Deployment (crash-safe read-back)
+    # =========================================================================
+
+    async def get_active_deployment_db(self) -> Optional[Dict[str, Any]]:
+        """
+        Query Supabase for the most recent deployment still within the 5-min
+        watch window. Used as a fallback when active_deployments RAM dict is
+        empty (e.g. after a Render restart).
+
+        Relies on the 'status' and 'created_at' columns in the deployments table.
+        """
+        if not self.client:
+            return None
+        try:
+            from datetime import datetime, timedelta, timezone
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+            result = (
+                self.client.table("deployments")
+                .select("*")
+                .eq("status", "watching")
+                .gte("created_at", cutoff)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.debug(f"[DB] get_active_deployment_db miss: {e}")
+            return None
+
+    # =========================================================================
     # Session Token Persistence (crash-safe sessions)
     # =========================================================================
 
