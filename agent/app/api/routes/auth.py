@@ -120,12 +120,16 @@ async def github_callback(code: str):
     # --- Create a session with a unique agent API key ---
     session_token = create_session(github_user, access_token)
 
-    # --- Persist user to Supabase (non-blocking, fails gracefully) ---
-    # Retrieve the key that was just generated so it matches what's in the session
+    # --- Persist user + session token to Supabase ---
+    # This makes sessions survive Render restarts / multi-worker deployments.
+    # The middleware's DB fallback uses this token to reconstruct the session.
     from app.api.middleware.auth import get_session
     session_data = get_session(session_token)
     agent_api_key = session_data.get("agent_api_key", "") if session_data else ""
+    github_id = str(github_user.get("id", ""))
+
     await db.upsert_user(github_user, access_token, agent_api_key)
+    await db.save_session_token(session_token, github_id)
 
     # Redirect to the onboarding page with the session token
     frontend_url = f"{settings.FRONTEND_URL}/onboarding.html?token={session_token}"

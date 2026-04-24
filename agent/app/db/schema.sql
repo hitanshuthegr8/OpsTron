@@ -232,6 +232,7 @@ CREATE TABLE IF NOT EXISTS opstron_users (
   avatar_url      TEXT,
   agent_api_key   TEXT NOT NULL UNIQUE,       -- Per-user agent key (X-API-Key header)
   github_token    TEXT,                       -- Stored OAuth access token (encrypted at app level)
+  session_token   TEXT UNIQUE,               -- Current browser session token (survives restarts)
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   last_seen_at    TIMESTAMPTZ DEFAULT NOW()
 );
@@ -240,6 +241,7 @@ CREATE TABLE IF NOT EXISTS opstron_users (
 CREATE INDEX IF NOT EXISTS idx_opstron_users_login     ON opstron_users(login);
 CREATE INDEX IF NOT EXISTS idx_opstron_users_api_key   ON opstron_users(agent_api_key);
 CREATE INDEX IF NOT EXISTS idx_opstron_users_last_seen ON opstron_users(last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_opstron_users_session   ON opstron_users(session_token);
 
 -- RLS: service key has full access, anon has none
 ALTER TABLE opstron_users ENABLE ROW LEVEL SECURITY;
@@ -299,6 +301,21 @@ BEGIN
   ) THEN
     ALTER TABLE deployments ADD COLUMN github_id TEXT REFERENCES opstron_users(github_id) ON DELETE SET NULL;
     CREATE INDEX idx_deployments_user ON deployments(github_id);
+  END IF;
+END $$;
+
+
+-- =============================================================================
+-- Add session_token column to opstron_users (idempotent migration)
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'opstron_users' AND column_name = 'session_token'
+  ) THEN
+    ALTER TABLE opstron_users ADD COLUMN session_token TEXT UNIQUE;
+    CREATE INDEX idx_opstron_users_session ON opstron_users(session_token);
   END IF;
 END $$;
 

@@ -314,6 +314,53 @@ class Database:
             logger.error(f"[DB] upsert_repo failed: {e}")
             return False
 
+    # =========================================================================
+    # Session Token Persistence (crash-safe sessions)
+    # =========================================================================
+
+    async def save_session_token(self, session_token: str, github_id: str) -> bool:
+        """
+        Persist a session token to Supabase so it survives service restarts.
+
+        Called immediately after create_session() in the OAuth callback.
+        The token is stored in opstron_users.session_token.
+        """
+        if not self.client:
+            logger.warning("[DB] Supabase not configured — session token not persisted (will break on restart)")
+            return False
+        try:
+            self.client.table("opstron_users").update(
+                {"session_token": session_token}
+            ).eq("github_id", github_id).execute()
+            logger.info(f"[DB] Session token persisted for github_id={github_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[DB] save_session_token failed: {e}")
+            return False
+
+    async def get_session_by_token(self, session_token: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve user data by session token.
+
+        Used as a DB fallback in verify_github_session() when the in-memory
+        session store has been cleared (e.g. after a Render restart).
+        Returns None if the token is not found or the DB is unavailable.
+        """
+        if not self.client:
+            return None
+        try:
+            result = (
+                self.client.table("opstron_users")
+                .select("github_id, login, name, avatar_url, email, github_token, agent_api_key")
+                .eq("session_token", session_token)
+                .single()
+                .execute()
+            )
+            return result.data
+        except Exception as e:
+            logger.debug(f"[DB] get_session_by_token miss: {e}")
+            return None
+
 
 # Global database instance
 db = Database()

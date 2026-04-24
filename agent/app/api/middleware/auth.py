@@ -92,8 +92,10 @@ async def verify_github_session(request: Request) -> dict:
     """
     Verify that the request has a valid GitHub OAuth session.
 
-    Checks for a Bearer token in the Authorization header
-    and validates it against the session store.
+    Checks for a Bearer token in the Authorization header and validates
+    it against the in-memory session store first (fast path). If not found
+    — e.g. after a Render restart wiped the in-memory dict — falls back to
+    Supabase to reconstruct the session (slow path, one DB round-trip).
 
     Returns:
         dict: The authenticated GitHub user data (includes agent_api_key).
@@ -107,7 +109,37 @@ async def verify_github_session(request: Request) -> dict:
         )
 
     token = auth_header.split("Bearer ")[1]
+
+    # --- Fast path: session already in memory ---
     session = get_session(token)
+
+    if not session:
+        # --- Slow path: session was wiped (restart / multi-worker). Look up in DB ---
+        logger.info("[Auth] Session not in memory — attempting DB fallback lookup")
+        try:
+            from app.db.supabase_client import db
+            user_data = await db.get_session_by_token(token)
+        except Exception as e:
+            logger.warning(f"[Auth] DB fallback lookup failed: {e}")
+            user_data = None
+
+        if user_data:
+            # Reconstruct the session dict (same shape as create_session produces)
+            session = {
+                "github_id":           user_data.get("github_id", ""),
+                "login":               user_data.get("login", ""),
+                "name":                user_data.get("name"),
+                "avatar_url":          user_data.get("avatar_url"),
+                "email":               user_data.get("email"),
+                "github_access_token": user_data.get("github_token", ""),
+                "agent_api_key":       user_data.get("agent_api_key", ""),
+            }
+            # Re-register in memory so subsequent requests in this worker are instant
+            active_sessions[token] = session
+            agent_key = session.get("agent_api_key", "")
+            if agent_key:
+                api_key_to_user[agent_key] = session["github_id"]
+            logger.info(f"[Auth] Session restored from DB for: {session.get('login')} (token cached in memory)")
 
     if not session:
         raise HTTPException(
