@@ -79,6 +79,46 @@ function showToast(message, type = 'info') {
 }
 
 // ===========================================
+// Setup Banner — shown when no repo connected
+// ===========================================
+function showSetupBanner() {
+    const dashboard = document.getElementById('section-dashboard');
+    if (!dashboard) return;
+    if (document.getElementById('setup-banner')) return; // already shown
+
+    const banner = document.createElement('div');
+    banner.id = 'setup-banner';
+    banner.style.cssText = `
+        background: linear-gradient(135deg, rgba(99,102,241,.2), rgba(139,92,246,.15));
+        border: 1px solid rgba(99,102,241,.4);
+        border-radius: 14px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+    `;
+    banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:16px;">
+            <span style="font-size:2rem;">🚀</span>
+            <div>
+                <div style="font-weight:600;color:var(--text-primary);font-size:1rem;margin-bottom:4px;">
+                    Complete your setup — connect a repository
+                </div>
+                <div style="font-size:.875rem;color:var(--text-secondary);">
+                    OpsTron needs a GitHub repo to watch. Connect one and we'll install the webhook automatically.
+                </div>
+            </div>
+        </div>
+        <a href="onboarding.html" class="btn btn-primary" style="white-space:nowrap;flex-shrink:0;">
+            Connect Repo →
+        </a>
+    `;
+    dashboard.insertBefore(banner, dashboard.firstChild);
+}
+
+// ===========================================
 // Auth Helper — all API calls go through here
 // ===========================================
 function authHeaders() {
@@ -378,13 +418,19 @@ async function init() {
     // 5. Load user profile (also populates repo section)
     await loadUserProfile();
 
-    // 6. Check agent status
+    // 6. If no repo connected yet, show setup banner on dashboard
+    const connectedRepo = localStorage.getItem('connected_repo') || '';
+    if (!connectedRepo) {
+        showSetupBanner();
+    }
+
+    // 7. Check agent status
     await checkAgentStatus();
 
-    // 7. Load existing RCA reports
+    // 8. Load existing RCA reports
     await fetchRCAHistory();
 
-    // 8. Refresh button
+    // 9. Refresh button
     if (elements.refreshBtn) {
         elements.refreshBtn.addEventListener('click', async () => {
             await checkAgentStatus();
@@ -393,10 +439,10 @@ async function init() {
         });
     }
 
-    // 9. Error trigger button (section-errors)
+    // 10. Error trigger button (section-errors)
     elements.triggerErrorBtn2?.addEventListener('click', triggerTestError);
 
-    // 10. Periodic status check every 30s
+    // 11. Periodic status check every 30s
     setInterval(checkAgentStatus, 30000);
 
     localStorage.setItem('setup_done', 'true');
