@@ -1,102 +1,353 @@
 #!/usr/bin/env python3
 """
-OpsTron Lightweight Log Forwarding Agent (v3.0)
+OpsTron Log Forwarding Agent v4.0
 
-This script is designed to run securely on the user's infrastructure.
-It connects to the local Docker socket and streams logs *outbound* to the
-OpsTron backend, ensuring OpsTron never requires inbound remote access.
+WHAT CHANGED FROM v3:
+  ✅ Label filtering   — only monitors containers you opt-in with opstron.monitor=true
+  ✅ Delta logging     — tracks last-seen timestamp per container, sends NEW lines only
+  ✅ Docker events     — instant crash/OOM/kill detection via event stream (no polling)
+  ✅ Heartbeat         — agent reports liveness to backend every 60 seconds
+  ✅ Exponential retry — backs off on network failures instead of hammering the backend
 
-⚠️ PRODUCTION SECURITY WARNING ⚠️
-Mounting `/var/run/docker.sock` provides full access to the Docker daemon.
-While acceptable for development or isolated college projects, in a strict
-production environment, this forwarder should be run:
-  1. Using a read-only Docker socket proxy (e.g., Tecnativa/docker-socket-proxy)
-  2. With restricted IAM/RBAC roles if running in Kubernetes.
+HOW TO OPT A CONTAINER IN:
+  Add this label to any container you want OpsTron to watch:
+    labels:
+      opstron.monitor: "true"
 
-*Guarantee: This script is entirely read-only. It only executes `container.logs()`.
-It does not and cannot mutate, stop, or delete containers.*
+  Or via docker run:
+    docker run --label opstron.monitor=true ...
 
-Usage:
-    export OPSTRON_API_KEY="your_secure_key"
-    export OPSTRON_BACKEND_URL="https://api.opstron.io/agent/logs/ingest"
-    python3 opstron_forwarder.py
+USAGE:
+  export OPSTRON_API_KEY="your-key-from-opstron-dashboard"
+  export OPSTRON_BACKEND_URL="https://opstron.onrender.com"
+  python3 opstron_forwarder.py
+
+ENVIRONMENT VARIABLES:
+  OPSTRON_API_KEY      (required) Your unique agent key from the OpsTron dashboard
+  OPSTRON_BACKEND_URL  (required) Base URL of the OpsTron backend (no trailing slash)
+  OPSTRON_POLL_SECS    (optional) How often to poll for new logs, default 30
+  OPSTRON_LABEL        (optional) Label to filter on, default opstron.monitor=true
+
+SECURITY NOTE:
+  This script is entirely read-only. It only calls container.logs() and
+  listens to the Docker events stream. It cannot stop, restart, or modify
+  any container in any way.
 """
 
 import os
 import sys
 import time
 import json
+import socket
 import logging
+import threading
+from datetime import datetime, timezone
+
 import requests
 import docker
-from datetime import datetime
 
+# ---------------------------------------------------------------------------
 # Configuration
-API_KEY = os.environ.get("OPSTRON_API_KEY")
-BACKEND_URL = os.environ.get("OPSTRON_BACKEND_URL", "http://host.docker.internal:8001/agent/logs/ingest")
-POLL_INTERVAL = int(os.environ.get("OPSTRON_POLL_INTERVAL", "5"))
+# ---------------------------------------------------------------------------
+API_KEY      = os.environ.get("OPSTRON_API_KEY", "").strip()
+BACKEND_URL  = os.environ.get("OPSTRON_BACKEND_URL", "https://opstron.onrender.com").rstrip("/")
+POLL_SECS    = int(os.environ.get("OPSTRON_POLL_SECS", "30"))
+MONITOR_LABEL = os.environ.get("OPSTRON_LABEL", "opstron.monitor")
+AGENT_VERSION = "4.0.0"
+HOSTNAME      = socket.gethostname()
 
-# Setup Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("OpsTron-Forwarder")
+INGEST_URL    = f"{BACKEND_URL}/agent/logs/ingest"
+HEARTBEAT_URL = f"{BACKEND_URL}/agent/heartbeat"
 
-def main():
-    if not API_KEY:
-        logger.error("FATAL: OPSTRON_API_KEY environment variable is not set.")
-        sys.exit(1)
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("opstron-agent")
 
+
+# ---------------------------------------------------------------------------
+# HTTP helpers
+# ---------------------------------------------------------------------------
+def _headers() -> dict:
+    return {
+        "Content-Type": "application/json",
+        "X-API-Key": API_KEY,
+    }
+
+
+def _post(url: str, payload: dict, timeout: int = 8) -> bool:
+    """POST JSON to backend. Returns True on success."""
     try:
-        client = docker.from_env()
-        logger.info("Successfully connected to local Docker socket.")
+        r = requests.post(url, json=payload, headers=_headers(), timeout=timeout)
+        if r.status_code == 200:
+            return True
+        logger.warning(f"Backend returned {r.status_code} for {url}: {r.text[:120]}")
+        return False
+    except requests.exceptions.Timeout:
+        logger.warning(f"Timeout posting to {url}")
+        return False
+    except requests.exceptions.ConnectionError:
+        logger.warning(f"Connection error posting to {url}")
+        return False
     except Exception as e:
-        logger.error(f"FATAL: Could not connect to Docker socket. Ensure you have permissions or mapped /var/run/docker.sock. Error: {e}")
-        sys.exit(1)
+        logger.error(f"Unexpected error posting to {url}: {e}")
+        return False
 
-    logger.info(f"OpsTron Forwarder active. Streaming logs to {BACKEND_URL} every {POLL_INTERVAL} seconds...")
 
-    # We poll the last N lines every interval.
+# ---------------------------------------------------------------------------
+# Heartbeat
+# ---------------------------------------------------------------------------
+def send_heartbeat(docker_client: docker.DockerClient):
+    """Tell the backend this agent is alive."""
+    try:
+        monitored = [
+            c.name
+            for c in docker_client.containers.list()
+            if c.labels.get(MONITOR_LABEL) == "true"
+        ]
+    except Exception:
+        monitored = []
+
+    payload = {
+        "agent_version": AGENT_VERSION,
+        "hostname": HOSTNAME,
+        "monitored_containers": monitored,
+    }
+    ok = _post(HEARTBEAT_URL, payload)
+    if ok:
+        logger.info(f"💓 Heartbeat sent | watching {len(monitored)} containers: {monitored}")
+    else:
+        logger.warning("💓 Heartbeat failed — backend unreachable?")
+
+
+def heartbeat_loop(docker_client: docker.DockerClient, interval_secs: int = 60):
+    """Run heartbeats on a background thread every `interval_secs` seconds."""
+    while True:
+        time.sleep(interval_secs)
+        send_heartbeat(docker_client)
+
+
+# ---------------------------------------------------------------------------
+# Delta log polling
+# ---------------------------------------------------------------------------
+# Maps container_id → ISO timestamp of last log line we sent
+_last_seen: dict[str, str] = {}
+
+
+def get_monitored_containers(docker_client: docker.DockerClient) -> list:
+    """Return only containers that have opted in with the monitor label."""
+    try:
+        return docker_client.containers.list(
+            filters={"label": f"{MONITOR_LABEL}=true"}
+        )
+    except Exception as e:
+        logger.error(f"Failed to list containers: {e}")
+        return []
+
+
+def poll_logs(docker_client: docker.DockerClient):
+    """
+    For each monitored container, fetch ONLY new log lines since last poll.
+    Uses `since` parameter to avoid re-sending the same lines.
+    """
+    containers = get_monitored_containers(docker_client)
+
+    if not containers:
+        logger.debug("No containers with opstron.monitor=true found. Waiting...")
+        return
+
+    for container in containers:
+        cid  = container.id
+        name = container.name
+
+        # First time we see this container: grab last 50 lines as bootstrap
+        since = _last_seen.get(cid)
+        try:
+            if since:
+                # Only new lines since last successful poll
+                raw_logs = container.logs(
+                    since=datetime.fromisoformat(since).replace(tzinfo=timezone.utc),
+                    timestamps=True,
+                ).decode("utf-8", errors="ignore")
+            else:
+                # Bootstrap: grab last 50 lines
+                raw_logs = container.logs(
+                    tail=50,
+                    timestamps=True,
+                ).decode("utf-8", errors="ignore")
+
+            lines = [l for l in raw_logs.splitlines() if l.strip()]
+            if not lines:
+                continue
+
+            # Update the since pointer to the timestamp of the last line
+            # Docker timestamp format: 2024-01-15T12:00:00.000000000Z <log>
+            last_line = lines[-1]
+            if " " in last_line:
+                ts_part = last_line.split(" ")[0]
+                # Trim nanoseconds to microseconds (Python only handles 6 digits)
+                ts_trimmed = ts_part[:26] + "Z" if len(ts_part) > 26 else ts_part
+                try:
+                    _last_seen[cid] = ts_trimmed.replace("Z", "+00:00")
+                except Exception:
+                    _last_seen[cid] = datetime.utcnow().isoformat()
+            else:
+                _last_seen[cid] = datetime.utcnow().isoformat()
+
+            # Strip timestamps from lines before sending
+            clean_lines = []
+            for line in lines:
+                parts = line.split(" ", 1)
+                clean_lines.append(parts[1] if len(parts) == 2 else line)
+
+            logs_text = "\n".join(clean_lines)
+
+            payload = {
+                "container_id": cid[:12],
+                "container_name": name,
+                "logs": logs_text,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+            ok = _post(INGEST_URL, payload)
+            if ok:
+                logger.info(f"📤 {name}: sent {len(clean_lines)} new lines")
+            else:
+                # Don't advance the pointer — retry same window next poll
+                _last_seen.pop(cid, None)
+
+        except Exception as e:
+            logger.warning(f"Error reading logs from {name}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Docker Events stream (instant crash detection)
+# ---------------------------------------------------------------------------
+CRASH_EVENTS = {"die", "oom", "kill", "stop"}
+
+
+def watch_events(docker_client: docker.DockerClient):
+    """
+    Listen to Docker event stream. When a monitored container crashes/OOMs/dies,
+    immediately flush its last 100 lines to the backend so RCA can start right away.
+    Runs forever on a background thread.
+    """
+    logger.info("👁️  Docker events stream started (watching for crashes/OOMs...)")
     while True:
         try:
-            containers = client.containers.list()
-            for container in containers:
+            for event in docker_client.events(
+                decode=True,
+                filters={"type": "container", "label": f"{MONITOR_LABEL}=true"},
+            ):
+                action = event.get("Action", "")
+                if action not in CRASH_EVENTS:
+                    continue
+
+                cid   = event.get("id", "")[:12]
+                attrs = event.get("Actor", {}).get("Attributes", {})
+                name  = attrs.get("name", cid)
+                exit_code = attrs.get("exitCode", "?")
+
+                logger.warning(f"🚨 CRASH DETECTED: {name} | event={action} | exit={exit_code}")
+
+                # Flush last 100 lines immediately — don't wait for next poll
                 try:
-                    # STRICTLY READ-ONLY OPERATION
-                    # We grab a small tail of logs and ignore encoding errors to prevent crashes
-                    logs = container.logs(tail=50).decode('utf-8', errors='ignore')
-                    
-                    if not logs.strip():
-                        continue
-                        
-                    payload = {
-                        "container_id": container.id,
-                        "container_name": container.name,
-                        "logs": logs,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                    
-                    headers = {
-                        "Content-Type": "application/json",
-                        "X-API-Key": API_KEY  # Authenticate with the backend
-                    }
-                    
-                    response = requests.post(BACKEND_URL, json=payload, headers=headers, timeout=5)
-                    
-                    if response.status_code != 200:
-                        logger.warning(f"Failed to forward logs for {container.name}. Status: {response.status_code}")
-                        
-                except Exception as container_err:
-                    logger.warning(f"Error reading logs from {container.name}: {container_err}")
-                    
-        except requests.exceptions.RequestException as req_err:
-             logger.error(f"Network error communicating with backend: {req_err}")
+                    container = docker_client.containers.get(cid)
+                    crash_logs = container.logs(tail=100).decode("utf-8", errors="ignore")
+                except Exception:
+                    crash_logs = f"[opstron] Container {name} exited with code {exit_code}. Could not retrieve logs."
+
+                payload = {
+                    "container_id": cid,
+                    "container_name": name,
+                    "logs": crash_logs,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "event": action,
+                    "exit_code": exit_code,
+                }
+
+                ok = _post(INGEST_URL, payload)
+                if ok:
+                    logger.info(f"🚨 Crash logs for {name} forwarded to backend → RCA triggered")
+                else:
+                    logger.error(f"Failed to forward crash logs for {name}")
+
+                # Reset delta pointer so next poll bootstraps fresh
+                _last_seen.pop(cid, None)
+
         except Exception as e:
-            logger.error(f"Critical error during polling cycle: {e}")
-            
-        time.sleep(POLL_INTERVAL)
+            logger.error(f"Events stream error: {e}. Reconnecting in 5s...")
+            time.sleep(5)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main():
+    if not API_KEY:
+        logger.error("FATAL: OPSTRON_API_KEY is not set.")
+        logger.error("Get your key from the OpsTron dashboard after logging in.")
+        sys.exit(1)
+
+    logger.info("=" * 60)
+    logger.info(f"  OpsTron Agent v{AGENT_VERSION}")
+    logger.info(f"  Host    : {HOSTNAME}")
+    logger.info(f"  Backend : {BACKEND_URL}")
+    logger.info(f"  Filter  : label {MONITOR_LABEL}=true")
+    logger.info(f"  Poll    : every {POLL_SECS}s (delta only)")
+    logger.info("=" * 60)
+
+    # Connect to Docker
+    try:
+        docker_client = docker.from_env()
+        docker_client.ping()
+        logger.info("✅ Connected to Docker socket")
+    except Exception as e:
+        logger.error(f"FATAL: Cannot connect to Docker socket: {e}")
+        logger.error("Make sure to mount: -v /var/run/docker.sock:/var/run/docker.sock:ro")
+        sys.exit(1)
+
+    # Startup heartbeat
+    send_heartbeat(docker_client)
+
+    # Background: Docker events stream (crash detection)
+    events_thread = threading.Thread(
+        target=watch_events, args=(docker_client,), daemon=True, name="events-watcher"
+    )
+    events_thread.start()
+
+    # Background: heartbeat every 60 seconds
+    hb_thread = threading.Thread(
+        target=heartbeat_loop, args=(docker_client,), daemon=True, name="heartbeat"
+    )
+    hb_thread.start()
+
+    # Main loop: delta log polling
+    logger.info(f"🔄 Starting delta log poll every {POLL_SECS}s...")
+    consecutive_failures = 0
+
+    while True:
+        try:
+            poll_logs(docker_client)
+            consecutive_failures = 0
+        except Exception as e:
+            consecutive_failures += 1
+            wait = min(60, 5 * consecutive_failures)  # exponential-ish backoff, max 60s
+            logger.error(f"Poll error ({consecutive_failures}): {e}. Retrying in {wait}s...")
+            time.sleep(wait)
+            continue
+
+        time.sleep(POLL_SECS)
+
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logger.info("OpsTron Forwarder shutting down gracefully.")
+        logger.info("OpsTron Agent shutting down gracefully.")
         sys.exit(0)

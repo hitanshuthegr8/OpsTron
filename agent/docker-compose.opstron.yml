@@ -1,0 +1,52 @@
+# ============================================================================
+# OpsTron Agent — Drop this file into your project
+# ============================================================================
+#
+# SETUP (one time):
+#   1. Log in at https://opstron.onrender.com/auth/github/login
+#   2. Copy your API key from the dashboard
+#   3. Set OPSTRON_API_KEY below (or export it as an env var)
+#   4. Run: docker compose -f docker-compose.opstron.yml up -d
+#
+# OPT YOUR CONTAINERS IN:
+#   Add this label to any service you want OpsTron to monitor:
+#
+#     labels:
+#       opstron.monitor: "true"
+#
+# That's it. OpsTron will automatically detect errors and trigger RCA.
+# ============================================================================
+
+services:
+  opstron-agent:
+    image: opstron/agent:latest
+    container_name: opstron-agent
+    restart: unless-stopped
+
+    environment:
+      # ✅ Required — get this from https://opstron.onrender.com after login
+      OPSTRON_API_KEY: "${OPSTRON_API_KEY}"
+
+      # OpsTron backend URL (don't change unless self-hosting)
+      OPSTRON_BACKEND_URL: "https://opstron.onrender.com"
+
+      # How often to poll for new logs (seconds). Default: 30
+      # OPSTRON_POLL_SECS: "30"
+
+    volumes:
+      # Read-only access to Docker socket — required for log reading
+      # The agent CANNOT modify, stop, or restart any containers.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    # Keep the agent lightweight
+    mem_limit: 64m
+    cpus: "0.1"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # YOUR SERVICES BELOW — add `opstron.monitor: "true"` to any you want watched
+  # ──────────────────────────────────────────────────────────────────────────
+
+  # Example: your-app:
+  #   image: your-app:latest
+  #   labels:
+  #     opstron.monitor: "true"   # ← OpsTron watches this container

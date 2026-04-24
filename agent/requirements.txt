@@ -29,3 +29,6 @@ twilio==9.4.0
 # Utilities
 python-multipart==0.0.20
 python-dotenv==1.0.1
+
+# Supabase (Persistent Storage)
+supabase==2.10.0

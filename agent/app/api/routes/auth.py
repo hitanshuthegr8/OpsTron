@@ -20,6 +20,7 @@ from app.api.middleware.auth import (
     verify_github_session,
     GitHubAuth,
 )
+from app.db.supabase_client import db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -117,12 +118,17 @@ async def github_callback(code: str):
     logger.info(f"GitHub OAuth successful for user: {github_user.get('login')}")
 
     # --- Create a session with a unique agent API key ---
-    # This key is what the user's Docker agent will use in X-API-Key header
     session_token = create_session(github_user, access_token)
+
+    # --- Persist user to Supabase (non-blocking, fails gracefully) ---
+    # Retrieve the key that was just generated so it matches what's in the session
+    from app.api.middleware.auth import get_session
+    session_data = get_session(session_token)
+    agent_api_key = session_data.get("agent_api_key", "") if session_data else ""
+    await db.upsert_user(github_user, access_token, agent_api_key)
 
     # Redirect to the onboarding page with the session token
     frontend_url = f"{settings.FRONTEND_URL}/onboarding.html?token={session_token}"
-
     return RedirectResponse(url=frontend_url)
 
 

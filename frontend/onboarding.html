@@ -493,48 +493,48 @@
 
         <!-- ============ STEP 2: Docker Agent ============ -->
         <div class="step-view" id="step-2">
-            <p class="step-title">Install the Log Forwarder</p>
-            <p class="step-subtitle">This lightweight sidecar reads your container logs and streams errors to OpsTron's
-                AI engine in real-time. No inbound access required.</p>
+            <p class="step-title">Connect the OpsTron Agent</p>
+            <p class="step-subtitle">A lightweight sidecar that watches your containers and streams errors to OpsTron's
+                AI engine in real-time. No inbound access, no code changes.</p>
 
             <div class="info-card">
                 <h3>🐳 Docker Compose (Recommended)</h3>
-                <p style="color:var(--text-secondary);font-size:.9rem;margin-bottom:1rem;">Add this service to your
-                    existing <code>docker-compose.yml</code>:</p>
+                <p style="color:var(--text-secondary);font-size:.9rem;margin-bottom:1rem;">Add this to your
+                    <code>docker-compose.yml</code> and label any container you want monitored:</p>
                 <div class="code-wrap">
                     <button class="copy-btn" onclick="copyCode('dc-code')">Copy</button>
-                    <div class="code-block" id="dc-code"> <span class="kw">opstron-forwarder</span>:
-                        <span class="kw">image</span>: python:3.12-slim
-                        <span class="kw">volumes</span>:
-                        - /var/run/docker.sock:/var/run/docker.sock:ro
-                        - ./opstron_forwarder.py:/app/opstron_forwarder.py
-                        <span class="kw">environment</span>:
-                        OPSTRON_BACKEND_URL: <span class="st">"https://opstron.onrender.com/agent/logs/ingest"</span>
-                        OPSTRON_API_KEY: <span class="st">"your_api_key"</span>
-                        <span class="kw">command</span>: sh -c "pip install requests docker -q && python
-                        /app/opstron_forwarder.py"
-                        <span class="kw">restart</span>: unless-stopped
+                    <div class="code-block" id="dc-code">  <span class="kw">opstron-agent</span>:
+    <span class="kw">image</span>: opstron/agent:latest
+    <span class="kw">restart</span>: unless-stopped
+    <span class="kw">environment</span>:
+      OPSTRON_API_KEY: <span class="st" id="inline-api-key">"your_api_key"</span>
+    <span class="kw">volumes</span>:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  <span class="cm"># Add this label to any service you want OpsTron to watch:</span>
+  <span class="kw">your-app</span>:
+    <span class="kw">image</span>: your-app:latest
+    <span class="kw">labels</span>:
+      opstron.monitor: <span class="st">"true"</span>
                     </div>
                 </div>
             </div>
 
             <div class="info-card">
-                <h3>🖥️ Or run directly on your server</h3>
+                <h3>🖥️ Or run with a single Docker command</h3>
                 <div class="code-wrap">
                     <button class="copy-btn" onclick="copyCode('direct-code')">Copy</button>
-                    <div class="code-block" id="direct-code"><span class="cm"># Download the forwarder</span>
-                        curl -O https://raw.githubusercontent.com/hitanshuthegr8/OpsTron/main/agent/opstron_forwarder.py
-                        pip install requests docker
-
-                        <span class="cm"># Run it</span>
-                        <span class="kw">export</span> OPSTRON_BACKEND_URL=<span
-                            class="st">"http://your-opstron-server:8001/agent/logs/ingest"</span>
-                        <span class="kw">export</span> OPSTRON_API_KEY=<span class="st">"your_api_key"</span>
-                        python opstron_forwarder.py
-                    </div>
+                    <div class="code-block" id="direct-code">docker run -d \
+  -e OPSTRON_API_KEY=<span class="st" id="inline-api-key-2">"your_api_key"</span> \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  --name opstron-agent \
+  --restart unless-stopped \
+  opstron/agent:latest</div>
                 </div>
-                <div class="alert">⚠️ Replace <code>your-opstron-server</code> with the public URL or IP of the machine
-                    running OpsTron.</div>
+                <p style="color:var(--text-secondary);font-size:.85rem;margin-top:.75rem;">
+                    Then label containers to opt them in:
+                    <code>docker run --label opstron.monitor=true your-app</code>
+                </p>
             </div>
 
             <div style="margin-top:.5rem;">
@@ -764,6 +764,38 @@
             setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(100px)'; setTimeout(() => t.remove(), 300); }, 3500);
         }
 
+        // ---- Fetch user profile + agent_api_key ----
+        async function fetchUserProfile() {
+            if (!opsToken) return;
+            try {
+                const res = await fetch(`${BACKEND}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${opsToken}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const apiKey = data?.user?.agent_api_key;
+                if (!apiKey) return;
+
+                // Persist so we survive page refresh
+                localStorage.setItem('ops_agent_key', apiKey);
+
+                // Inject into both Docker snippets
+                injectApiKey(apiKey);
+            } catch (e) {
+                console.warn('Could not fetch user profile:', e);
+            }
+        }
+
+        function injectApiKey(key) {
+            // Compose snippet
+            const el1 = document.getElementById('inline-api-key');
+            if (el1) el1.textContent = `"${key}"`;
+
+            // docker run snippet
+            const el2 = document.getElementById('inline-api-key-2');
+            if (el2) el2.textContent = `"${key}"`;
+        }
+
         // ---- Init ----
         (function init() {
             // Capture token from GitHub OAuth redirect
@@ -771,7 +803,7 @@
             const token = params.get('token');
             if (token) {
                 localStorage.setItem('ops_token', token);
-                opsToken = token; // Update the in-memory variable for immediate API requests
+                opsToken = token;
                 window.history.replaceState({}, document.title, window.location.pathname);
                 toast('GitHub login successful! 🎉 Now connect a repo.', 'success');
             }
@@ -779,6 +811,13 @@
             if (!opsToken) {
                 toast('Sign in with GitHub first to connect a repo.', 'info');
             }
+
+            // Pre-fill API key if already stored
+            const cachedKey = localStorage.getItem('ops_agent_key');
+            if (cachedKey) injectApiKey(cachedKey);
+
+            // Fetch fresh profile (updates key if it changed)
+            fetchUserProfile();
 
             // Load repos immediately
             loadRepos();

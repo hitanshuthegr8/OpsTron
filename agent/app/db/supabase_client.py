@@ -43,13 +43,10 @@ class SupabaseClient:
     @classmethod
     def get_anon_client(cls) -> Client:
         """Get client with anon key (for frontend auth)."""
-        if not settings.SUPABASE_URL or not settings.SUPABASE_ANON_KEY:
+        anon_key = getattr(settings, 'SUPABASE_ANON_KEY', None)
+        if not settings.SUPABASE_URL or not anon_key:
             return None
-        
-        return create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_ANON_KEY
-        )
+        return create_client(settings.SUPABASE_URL, anon_key)
 
 
 # =============================================================================
@@ -226,6 +223,93 @@ class Database:
                 break
         
         return sessions
+
+    # =========================================================================
+    # Users (GitHub OAuth — opstron_users table)
+    # =========================================================================
+
+    async def upsert_user(
+        self, github_user: dict, access_token: str, agent_api_key: str
+    ) -> bool:
+        """
+        Create or update a row in opstron_users on every GitHub OAuth login.
+        Safe to call repeatedly — uses github_id as the conflict key.
+        """
+        if not self.client:
+            logger.warning("[DB] Supabase not configured — skipping upsert_user")
+            return False
+        try:
+            data = {
+                "github_id":     str(github_user.get("id", "")),
+                "login":         github_user.get("login", ""),
+                "name":          github_user.get("name"),
+                "email":         github_user.get("email"),
+                "avatar_url":    github_user.get("avatar_url"),
+                "agent_api_key": agent_api_key,
+                "github_token":  access_token,
+                "last_seen_at":  "now()",
+            }
+            self.client.table("opstron_users").upsert(
+                data, on_conflict="github_id"
+            ).execute()
+            logger.info(f"[DB] User upserted: {data['login']}")
+            return True
+        except Exception as e:
+            logger.error(f"[DB] upsert_user failed: {e}")
+            return False
+
+    async def get_user_by_api_key(self, api_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Look up which user owns this agent_api_key.
+        Used by verify_api_key() for persistent, crash-safe key lookup.
+        Returns None if not found or DB unavailable.
+        """
+        if not self.client:
+            return None
+        try:
+            result = (
+                self.client.table("opstron_users")
+                .select("github_id, login, name, avatar_url, agent_api_key")
+                .eq("agent_api_key", api_key)
+                .single()
+                .execute()
+            )
+            return result.data
+        except Exception as e:
+            logger.debug(f"[DB] get_user_by_api_key miss: {e}")
+            return None
+
+    # =========================================================================
+    # Connected Repos
+    # =========================================================================
+
+    async def upsert_repo(
+        self,
+        github_id: str,
+        repo_full_name: str,
+        webhook_id: Optional[str] = None,
+    ) -> bool:
+        """Record that a user has connected a repo in the onboarding flow."""
+        if not self.client:
+            return False
+        try:
+            owner, repo_name = repo_full_name.split("/", 1)
+            data = {
+                "github_id":      github_id,
+                "repo_full_name": repo_full_name,
+                "owner":          owner,
+                "repo_name":      repo_name,
+                "webhook_id":     webhook_id,
+                "webhook_active": True,
+            }
+            self.client.table("connected_repos").upsert(
+                data, on_conflict="github_id,repo_full_name"
+            ).execute()
+            logger.info(f"[DB] Repo upserted: {repo_full_name} for {github_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[DB] upsert_repo failed: {e}")
+            return False
 
 
 # Global database instance

@@ -215,3 +215,90 @@ GRANT ALL ON user_profiles TO service_role;
 -- VALUES 
 --   ('abc1234', 'hitanshuthegr8/OpsTron', 'hitanshuthegr8', 'main', 'feat: add auth', 'success'),
 --   ('def5678', 'hitanshuthegr8/OpsTron', 'hitanshuthegr8', 'main', 'fix: bug fix', 'watching');
+
+
+-- =============================================================================
+-- Table 7: OpsTron Users  (GitHub OAuth — NOT Supabase Auth)
+-- =============================================================================
+-- We handle GitHub OAuth ourselves (not Supabase Auth), so we need our own
+-- user table keyed on GitHub's numeric user ID.
+-- This is the source of truth for who owns what agent key and which repos.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS opstron_users (
+  github_id       TEXT PRIMARY KEY,          -- GitHub numeric ID as text (e.g. "12345678")
+  login           TEXT NOT NULL UNIQUE,       -- GitHub username e.g. "hitanshuthegr8"
+  name            TEXT,                       -- Display name
+  email           TEXT,
+  avatar_url      TEXT,
+  agent_api_key   TEXT NOT NULL UNIQUE,       -- Per-user agent key (X-API-Key header)
+  github_token    TEXT,                       -- Stored OAuth access token (encrypted at app level)
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  last_seen_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for fast lookups
+CREATE INDEX IF NOT EXISTS idx_opstron_users_login     ON opstron_users(login);
+CREATE INDEX IF NOT EXISTS idx_opstron_users_api_key   ON opstron_users(agent_api_key);
+CREATE INDEX IF NOT EXISTS idx_opstron_users_last_seen ON opstron_users(last_seen_at DESC);
+
+-- RLS: service key has full access, anon has none
+ALTER TABLE opstron_users ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON opstron_users TO service_role;
+
+
+-- =============================================================================
+-- Table 8: Connected Repos
+-- =============================================================================
+-- Tracks which GitHub repos each user has connected to OpsTron.
+-- One user can connect many repos. Webhook is installed per repo.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS connected_repos (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  github_id       TEXT NOT NULL REFERENCES opstron_users(github_id) ON DELETE CASCADE,
+  repo_full_name  TEXT NOT NULL,              -- e.g. "hitanshuthegr8/MyApp"
+  owner           TEXT NOT NULL,
+  repo_name       TEXT NOT NULL,
+  webhook_id      TEXT,                       -- GitHub webhook ID (for deletion later)
+  webhook_active  BOOLEAN DEFAULT TRUE,
+  connected_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(github_id, repo_full_name)           -- one row per user+repo pair
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_connected_repos_user ON connected_repos(github_id);
+CREATE INDEX IF NOT EXISTS idx_connected_repos_repo ON connected_repos(repo_full_name);
+
+-- RLS
+ALTER TABLE connected_repos ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON connected_repos TO service_role;
+
+
+-- =============================================================================
+-- Migrate existing tables to support multi-tenancy
+-- (Safe: uses IF NOT EXISTS / DO NOTHING patterns)
+-- =============================================================================
+
+-- Add user_id to rca_logs (links incidents to the user who owns the agent)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'rca_logs' AND column_name = 'github_id'
+  ) THEN
+    ALTER TABLE rca_logs ADD COLUMN github_id TEXT REFERENCES opstron_users(github_id) ON DELETE SET NULL;
+    CREATE INDEX idx_rca_logs_user ON rca_logs(github_id);
+  END IF;
+END $$;
+
+-- Add user_id to deployments
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'deployments' AND column_name = 'github_id'
+  ) THEN
+    ALTER TABLE deployments ADD COLUMN github_id TEXT REFERENCES opstron_users(github_id) ON DELETE SET NULL;
+    CREATE INDEX idx_deployments_user ON deployments(github_id);
+  END IF;
+END $$;
+
