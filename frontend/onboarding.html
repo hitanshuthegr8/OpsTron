@@ -617,6 +617,13 @@
                 document.getElementById('btn-next').textContent = n === 1 ? 'Next: Docker Setup →' : 'Continue →';
                 document.getElementById('btn-next').disabled = (n === 1 && !webhookInstalled);
             }
+
+            // Start/stop real agent status polling based on current step
+            if (n === 2) {
+                startAgentPolling();
+            } else {
+                stopAgentPolling();
+            }
         }
 
         function nextStep() { currentStep++; showStep(currentStep); }
@@ -718,6 +725,8 @@
 
                 // Show success
                 webhookInstalled = true;
+                // Persist for dashboard repo section
+                localStorage.setItem('connected_repo', `${selectedRepo.owner}/${selectedRepo.repo}`);
                 document.getElementById('webhook-success').style.display = 'block';
                 document.getElementById('success-msg').textContent = data.message;
                 document.getElementById('btn-next').disabled = false;

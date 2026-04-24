@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpsTron - AI-Powered RCA Dashboard</title>
+    <meta name="description" content="OpsTron AI-powered Root Cause Analysis dashboard for monitoring Docker containers and analyzing production incidents.">
     <link rel="stylesheet" href="src/css/main.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -24,9 +25,9 @@
                     <span class="nav-icon">📊</span>
                     <span>Dashboard</span>
                 </a>
-                <a href="#" class="nav-item" data-section="github">
+                <a href="#" class="nav-item" data-section="repo">
                     <span class="nav-icon">🔗</span>
-                    <span>GitHub Config</span>
+                    <span>Repository</span>
                 </a>
                 <a href="#" class="nav-item" data-section="errors">
                     <span class="nav-icon">🚨</span>
@@ -41,6 +42,19 @@
                 <div class="status-indicator" id="agent-status">
                     <span class="status-dot"></span>
                     <span>Agent: Checking...</span>
+                </div>
+                <!-- User profile shown after auth -->
+                <div id="user-profile" style="display:none; margin-top:12px; padding:10px 0; border-top:1px solid var(--border-color);">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                        <img id="user-avatar" src="" alt="avatar" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--accent-primary);">
+                        <div>
+                            <div id="user-login" style="font-size:.85rem;font-weight:600;color:var(--text-primary);"></div>
+                            <div style="font-size:.75rem;color:var(--text-muted);">GitHub OAuth</div>
+                        </div>
+                    </div>
+                    <button id="logout-btn" class="btn btn-secondary" style="width:100%;font-size:.8rem;padding:7px 10px;" onclick="logout()">
+                        Sign Out
+                    </button>
                 </div>
             </div>
         </aside>
@@ -71,7 +85,7 @@
                         <div class="stat-icon commits">📝</div>
                         <div class="stat-content">
                             <div class="stat-value" id="stat-commits">--</div>
-                            <div class="stat-label">Recent Commits</div>
+                            <div class="stat-label">RCA Reports</div>
                         </div>
                     </div>
                     <div class="stat-card">
@@ -93,64 +107,64 @@
                 <div class="card">
                     <div class="card-header">
                         <h2>Recent RCA Reports</h2>
+                        <button class="btn btn-secondary btn-sm" onclick="fetchRCAHistory()">↻ Refresh</button>
                     </div>
                     <div class="card-body">
                         <div id="rca-reports" class="reports-list">
                             <div class="empty-state">
                                 <span class="empty-icon">📋</span>
-                                <p>No RCA reports yet. Trigger an error to see analysis.</p>
-                                <button class="btn btn-primary" id="trigger-error-btn">Trigger Test Error</button>
+                                <p>No RCA reports yet. Push a commit or trigger an error to see AI analysis.</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- GitHub Config Section -->
-            <section class="section hidden" id="section-github">
+            <!-- Repository Section (replaces old GitHub Config) -->
+            <section class="section hidden" id="section-repo">
+                <!-- Connected repo card -->
                 <div class="card">
                     <div class="card-header">
-                        <h2>GitHub Configuration</h2>
-                        <span class="badge" id="github-status">Not Connected</span>
+                        <h2>🔗 Connected Repository</h2>
+                        <span class="badge" id="repo-badge" style="background:rgba(16,185,129,.15);color:var(--success);border:1px solid rgba(16,185,129,.3);">Active</span>
                     </div>
                     <div class="card-body">
-                        <form id="github-form" class="form">
-                            <div class="form-group">
-                                <label for="github-token">GitHub Personal Access Token</label>
-                                <div class="input-group">
-                                    <input type="password" id="github-token" placeholder="ghp_xxxxxxxxxxxx"
-                                        class="input">
-                                    <button type="button" class="btn btn-icon" id="toggle-token">👁️</button>
-                                </div>
-                                <small class="form-hint">Create a token at GitHub → Settings → Developer Settings →
-                                    Personal Access Tokens</small>
+                        <div id="connected-repo-info">
+                            <div class="empty-state">
+                                <span class="empty-icon">📦</span>
+                                <p>No repository connected yet.</p>
+                                <a href="onboarding.html" class="btn btn-primary" style="margin-top:12px;">Connect a Repo →</a>
                             </div>
-                            <div class="form-group">
-                                <label for="github-repo">Repository (owner/repo)</label>
-                                <input type="text" id="github-repo" placeholder="hitanshuthegr8/OpsTron" class="input">
-                                <small class="form-hint">Format: owner/repo - e.g., microsoft/vscode,
-                                    hitanshuthegr8/OpsTron</small>
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary">Save & Connect</button>
-                                <button type="button" class="btn btn-secondary" id="test-github-btn">Test
-                                    Connection</button>
-                            </div>
-                        </form>
+                        </div>
                     </div>
                 </div>
 
-                <div class="card" id="commits-card">
+                <!-- GitHub User card -->
+                <div class="card" id="gh-user-card" style="display:none;">
                     <div class="card-header">
-                        <h2>Recent Commits</h2>
-                        <button class="btn btn-secondary btn-sm" id="fetch-commits-btn">Fetch Commits</button>
+                        <h2>👤 GitHub Account</h2>
                     </div>
                     <div class="card-body">
-                        <div id="commits-list" class="commits-list">
-                            <div class="empty-state">
-                                <span class="empty-icon">📝</span>
-                                <p>Configure GitHub token to view commits</p>
+                        <div style="display:flex; align-items:center; gap:16px;">
+                            <img id="gh-avatar-big" src="" alt="avatar" style="width:56px;height:56px;border-radius:50%;border:2px solid var(--accent-primary);">
+                            <div>
+                                <div id="gh-name" style="font-size:1.05rem;font-weight:600;color:var(--text-primary);"></div>
+                                <div id="gh-login-display" style="font-size:.875rem;color:var(--text-muted);"></div>
+                                <div id="gh-email-display" style="font-size:.8rem;color:var(--text-muted);margin-top:2px;"></div>
                             </div>
+                            <div style="margin-left:auto;">
+                                <a href="onboarding.html" class="btn btn-secondary btn-sm">Change Repo →</a>
+                            </div>
+                        </div>
+
+                        <!-- Agent API Key display -->
+                        <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border-color);">
+                            <div style="font-size:.85rem;color:var(--text-muted);margin-bottom:6px;">Your Agent API Key</div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <code id="api-key-display" style="background:var(--bg-tertiary);padding:8px 12px;border-radius:8px;font-size:.8rem;color:var(--text-primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</code>
+                                <button class="btn btn-secondary btn-sm" onclick="copyApiKey()">Copy</button>
+                            </div>
+                            <div style="font-size:.75rem;color:var(--text-muted);margin-top:6px;">Use this as <code>OPSTRON_API_KEY</code> in your Docker agent.</div>
                         </div>
                     </div>
                 </div>
@@ -167,7 +181,7 @@
                         <div id="error-logs" class="logs-container">
                             <div class="empty-state">
                                 <span class="empty-icon">📋</span>
-                                <p>No errors logged yet</p>
+                                <p>No errors logged yet. OpsTron will capture errors from your Docker containers automatically.</p>
                             </div>
                         </div>
                     </div>
