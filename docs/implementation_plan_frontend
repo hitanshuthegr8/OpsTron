@@ -1,0 +1,53 @@
+# OpsTron Delight: Frontend Integration PRD & Architecture
+
+This document defines the Product Requirements and technical architecture for ensuring an **optimal connection** between the new React/TanStack frontend (`lov_frontend/opstron-delight`) and the existing OpsTron FastAPI backend.
+
+## 1. Product Requirements (PRD)
+
+### Goal
+Replace the legacy fragmented HTML/JS frontend with a modern, high-performance React application while fully preserving and optimizing the core AI-driven incident response workflows.
+
+### Core User Flows
+1. **Authentication (GitHub OAuth):** 
+   - User clicks "Sign In" → Backend redirects to GitHub consent.
+   - GitHub redirects back to Backend callback → Backend exchanges code, generates `session_token`, and redirects to Frontend (`/onboarding?token=...`).
+   - Frontend captures the token, persists it in `localStorage`, and fetches the user profile from `/auth/me`.
+2. **Onboarding:**
+   - **Step 1 (Repo):** Frontend fetches the user's GitHub repositories via `/integrations/repos`. User selects a repo, triggering `/integrations/install-webhook`.
+   - **Step 2 (Docker Agent):** Frontend dynamically generates Docker `compose` and `run` snippets injected with the user's unique `agent_api_key`. Frontend polls `/agent/status` to auto-detect when the agent connects.
+   - **Step 3 (Alerts):** User configures severity thresholds and phone numbers.
+3. **Dashboard / Incident Management:**
+   - Real-time fetching of AI Root Cause Analysis reports via `/rca/history`.
+   - Real-time agent status indicator based on `/health` and `/agent/status`.
+   - "Trigger Test Error" simulates a container crash by POSTing to `/ingest/logs`, testing the full AI pipeline end-to-end.
+
+## 2. Technical Architecture for Optimal Connection
+
+To ensure the connection is reliable, secure, and performant:
+
+### 2.1 State Management & API Layer
+- **`src/lib/api.ts`**: A centralized, type-safe API client. It automatically injects the `Bearer ${token}` into every request and the `X-API-Key` into agent-specific requests. If a request returns `401 Unauthorized`, it automatically clears the session and redirects to `/login`.
+- **`src/lib/opstron-store.ts`**: Replaces the legacy `state.js`. Uses React's `useSyncExternalStore` for predictable global state management that syncs seamlessly with `localStorage` (persisting tokens and API keys across hard refreshes).
+
+### 2.2 Security & Session Lifecycle
+- **Token Handling**: The token is never exposed in the UI. It is captured once from the URL parameter `?token=...`, saved to `localStorage`, and immediately stripped from the browser's URL history using `window.history.replaceState`.
+- **CORS Configuration**: The FastAPI backend currently allows `origins=["*"]` which ensures the frontend can connect from both `localhost:5173` (development) and deployed URLs without cross-origin issues.
+
+### 2.3 Real-Time Feedback
+- **Agent Polling**: The onboarding Docker step polls `/agent/status` every 4 seconds. When the user pastes the Docker snippet into their terminal, the frontend instantly turns green without requiring a page refresh.
+
+## 3. User Review Required
+
+> [!IMPORTANT]
+> The backend URL is currently hardcoded to `https://opstron.onrender.com`. 
+> If you plan to test this locally alongside the backend (e.g., backend running on `localhost:8001`), we will need to change the `BACKEND` constant in `src/lib/api.ts`.
+> **Do you want to test against the live Render backend, or a local backend?**
+
+## 4. Execution Plan (Next Steps)
+
+1. [x] Rewrite `api.ts` to implement real backend calls.
+2. [x] Rewrite `opstron-store.ts` to integrate the API client and manage real state.
+3. [x] Rewrite all Route components (`login`, `onboarding`, `dashboard`) to use real data.
+4. [ ] Run `bun install` inside `lov_frontend/opstron-delight`.
+5. [ ] Run `bun run dev` to start the frontend server locally.
+6. [ ] Verify OAuth flow and agent connection.

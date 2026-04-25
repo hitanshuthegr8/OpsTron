@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'frontend/**'
+      - 'lov_frontend/opstron-delight/**'
   workflow_dispatch:   # allow manual trigger
 
 permissions:
@@ -17,10 +17,25 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Deploy frontend/ to GitHub Pages
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: lov_frontend/opstron-delight/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: lov_frontend/opstron-delight
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: lov_frontend/opstron-delight
+
+      - name: Deploy lov_frontend to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./frontend
+          publish_dir: ./lov_frontend/opstron-delight/dist/client
           publish_branch: gh-pages
           force_orphan: true

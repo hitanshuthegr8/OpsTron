@@ -137,8 +137,10 @@ async def github_callback(code: str):
     await db.upsert_user(github_user, access_token, agent_api_key)
     await db.save_session_token(session_token, github_id)
 
-    # Redirect to the onboarding page with the session token
-    frontend_url = f"{settings.FRONTEND_URL}/onboarding.html?token={session_token}"
+    # Redirect to frontend root with token; client router handles onboarding.
+    # This avoids hardcoding route paths (and works better for static hosts).
+    frontend_base = settings.FRONTEND_URL.rstrip("/")
+    frontend_url = f"{frontend_base}/?token={session_token}"
     return RedirectResponse(url=frontend_url)
 
 
