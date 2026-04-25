@@ -32,6 +32,28 @@ jobs:
         run: npm run build
         working-directory: lov_frontend/opstron-delight
 
+      - name: Create GitHub Pages index fallback
+        run: |
+          cd lov_frontend/opstron-delight
+          JS_FILE=$(basename "$(ls dist/client/assets/index-*.js | head -n 1)")
+          CSS_FILE=$(basename "$(ls dist/client/assets/styles-*.css | head -n 1)")
+          cat > dist/client/index.html <<EOF
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>OpsTron</title>
+              <link rel="stylesheet" href="./assets/${CSS_FILE}" />
+            </head>
+            <body>
+              <div id="app"></div>
+              <script type="module" src="./assets/${JS_FILE}"></script>
+            </body>
+          </html>
+          EOF
+          cp dist/client/index.html dist/client/404.html
+
       - name: Deploy lov_frontend to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
