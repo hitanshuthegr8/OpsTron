@@ -1,16 +1,10 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { initFromOAuthCallback, refreshSession, useAppState, useHydrated } from "@/lib/opstron-store";
-import { TOKEN_KEY } from "@/lib/api";
+import { TOKEN_KEY, appPath } from "@/lib/api";
 
 import appCss from "../styles.css?url";
 
-function appPath(path: string): string {
-  const base = import.meta.env.BASE_URL || "/";
-  const cleanBase = base.endsWith("/") ? base.slice(0, -1) : base;
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${cleanBase}${cleanPath}`;
-}
 
 function NotFoundComponent() {
   return (

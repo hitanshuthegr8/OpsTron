@@ -40,16 +40,16 @@ jobs:
           CSS_FILE=$(basename "$(ls dist/client/assets/styles-*.css | head -n 1)")
           cat > dist/client/index.html <<EOF
           <!doctype html>
-          <html lang="en">
+          <html lang="en" class="dark">
             <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <title>OpsTron</title>
-              <link rel="stylesheet" href="./assets/${CSS_FILE}" />
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>OpsTron — Autonomous Incident Response</title>
+              <meta name="description" content="AI-powered root cause analysis for production incidents." />
+              <link rel="stylesheet" href="/OpsTron/assets/${CSS_FILE}" />
             </head>
-            <body>
-              <div id="app"></div>
-              <script type="module" src="./assets/${JS_FILE}"></script>
+            <body class="min-h-screen bg-background text-foreground antialiased">
+              <script type="module" src="/OpsTron/assets/${JS_FILE}"></script>
             </body>
           </html>
           EOF

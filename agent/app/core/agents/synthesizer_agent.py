@@ -1,7 +1,20 @@
+"""
+Synthesizer Agent
+
+Final step of the RCA pipeline. Takes the outputs of the Log, Commit, and
+Runbook agents and calls the LLM to produce a structured root cause report.
+
+Two prompt variants:
+  - Standard:    For regular runtime errors.
+  - Deployment:  For errors that occurred within 5 minutes of a code push.
+                 Focuses on commit diffs and provides a rollback recommendation.
+"""
+
 import logging
 from typing import Dict, Any, Optional
-from app.core.llm import LLMClient
 from datetime import datetime
+
+from app.core.llm import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -9,31 +22,38 @@ logger = logging.getLogger(__name__)
 class SynthesizerAgent:
     def __init__(self):
         self.llm = LLMClient()
-    
+
     async def synthesize(
         self,
         service: str,
         log_analysis: Dict[str, Any],
         commit_analysis: Dict[str, Any],
         runbook_results: list,
-        metadata: Optional[Dict[str, Any]] = None  # MVP3: Optional error metadata
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        
-        # MVP4: Check if this is a deployment-related error
-        is_deployment_related = metadata and metadata.get("deployment_context")
-        
-        if is_deployment_related:
-            system_prompt = self._get_deployment_system_prompt()
-        else:
-            system_prompt = self._get_standard_system_prompt()
+        """
+        Synthesize all pipeline evidence into a final RCA report.
 
-        # Build user prompt with optional metadata (MVP3 enhancement)
+        Args:
+            service:         Name of the service that errored.
+            log_analysis:    Output of LogAgent.analyze().
+            commit_analysis: Output of CommitAgent.analyze().
+            runbook_results: Output of RunbookAgent.search().
+            metadata:        Optional dict from the ingest route (env, endpoint, deployment context).
+
+        Returns:
+            dict: Structured RCA report. Shape depends on whether deployment context is present.
+        """
+        is_deployment_related = bool(metadata and metadata.get("deployment_context"))
+        system_prompt = (
+            self._get_deployment_system_prompt()
+            if is_deployment_related
+            else self._get_standard_system_prompt()
+        )
+
         metadata_section = ""
         if metadata:
-            metadata_section = f"""
-ERROR CONTEXT (AUTOMATED CAPTURE):
-{self._format_metadata(metadata)}
-"""
+            metadata_section = f"\nERROR CONTEXT (AUTOMATED CAPTURE):\n{self._format_metadata(metadata)}\n"
 
         user_prompt = f"""Service: {service}
 {metadata_section}
@@ -52,40 +72,38 @@ Provide root cause analysis in JSON format."""
             result = await self.llm.invoke_structured(system_prompt, user_prompt)
             result["service"] = service
             result["analyzed_at"] = datetime.utcnow().isoformat()
-            
-            # MVP3: Add ingestion metadata to report
+
             if metadata:
                 result["ingestion_mode"] = "automated"
                 result["error_timestamp"] = metadata.get("timestamp")
                 result["environment"] = metadata.get("environment")
                 result["request_id"] = metadata.get("request_id")
-                
-                # MVP4: Add deployment context
                 if is_deployment_related:
                     result["is_deployment_regression"] = True
                     result["suspect_commit"] = metadata["deployment_context"].get("suspect_commit")
             else:
                 result["ingestion_mode"] = "manual"
-            
+
             logger.info(f"RCA completed with {result.get('confidence', 'unknown')} confidence")
             return result
-            
+
         except Exception as e:
-            logger.error(f"Synthesis failed: {str(e)}")
+            logger.error(f"Synthesis failed: {e}")
             return {
                 "service": service,
                 "root_cause": "analysis_failed",
                 "confidence": "low",
                 "error": str(e),
                 "analyzed_at": datetime.utcnow().isoformat(),
-                "ingestion_mode": "automated" if metadata else "manual"
+                "ingestion_mode": "automated" if metadata else "manual",
             }
-    
+
+    # -------------------------------------------------------------------------
+    # Prompt formatters
+    # -------------------------------------------------------------------------
+
     def _format_metadata(self, metadata: Dict[str, Any]) -> str:
-        """Format MVP3 error metadata for the prompt."""
         lines = []
-        if metadata.get("error_message"):
-            lines.append(f"Error: {metadata['error_message']}")
         if metadata.get("timestamp"):
             lines.append(f"Timestamp: {metadata['timestamp']}")
         if metadata.get("environment"):
@@ -97,35 +115,37 @@ Provide root cause analysis in JSON format."""
         if metadata.get("request_id"):
             lines.append(f"Request ID: {metadata['request_id']}")
         return "\n".join(lines) if lines else "No additional context"
-    
+
     def _format_log_analysis(self, analysis: Dict[str, Any]) -> str:
-        lines = []
-        lines.append(f"Error Signals: {', '.join(analysis.get('error_signals', []))}")
-        lines.append(f"Key Errors: {', '.join(analysis.get('key_errors', []))}")
-        lines.append(f"Patterns: {', '.join(analysis.get('patterns', []))}")
-        return "\n".join(lines)
-    
+        return "\n".join([
+            f"Error Signals: {', '.join(analysis.get('error_signals', []))}",
+            f"Key Errors:    {', '.join(analysis.get('key_errors', []))}",
+            f"Patterns:      {', '.join(analysis.get('patterns', []))}",
+        ])
+
     def _format_commits(self, analysis: Dict[str, Any]) -> str:
-        commits = analysis.get('commits', [])
+        commits = analysis.get("commits", [])
         if not commits:
             return "No commits available"
-        
-        lines = []
-        for commit in commits[:5]:
-            lines.append(f"- {commit['sha']}: {commit['message']} ({commit['author']})")
-        return "\n".join(lines)
-    
+        return "\n".join(
+            f"- {c['sha']}: {c['message']} ({c['author']})"
+            for c in commits[:5]
+        )
+
     def _format_runbooks(self, results: list) -> str:
         if not results:
             return "No matching runbooks"
-        
-        lines = []
-        for result in results:
-            lines.append(f"- {result.get('title', 'Untitled')}: {result.get('snippet', '')[:200]}")
-        return "\n".join(lines)
-    
+        return "\n".join(
+            f"- {r.get('title', 'Untitled')}: {r.get('snippet', '')[:200]}"
+            for r in results
+        )
+
+    # -------------------------------------------------------------------------
+    # System prompts
+    # -------------------------------------------------------------------------
+
     def _get_standard_system_prompt(self) -> str:
-        """Standard RCA prompt for runtime errors."""
+        """Prompt for regular runtime errors."""
         return """You are a senior SRE conducting root cause analysis.
 
 Synthesize all evidence to determine:
@@ -149,9 +169,9 @@ Return ONLY valid JSON:
     "recommended_actions": ["action1", "action2"],
     "timeline": "estimated sequence of events"
 }"""
-    
+
     def _get_deployment_system_prompt(self) -> str:
-        """Specialized prompt for deployment regression analysis (MVP4)."""
+        """Prompt for deployment regression analysis (error occurred within 5 min of a push)."""
         return """You are a senior SRE analyzing a DEPLOYMENT REGRESSION.
 
 ⚠️ CRITICAL: This error occurred within 5 minutes of a code deployment.
@@ -170,7 +190,7 @@ Be extremely precise. Reference specific:
 Return ONLY valid JSON:
 {
     "root_cause": "Specific code change that caused the failure",
-    "is_deployment_caused": true/false,
+    "is_deployment_caused": true,
     "confidence": "high|medium|low",
     "suspect_code_change": {
         "file": "filename.py",
@@ -190,9 +210,8 @@ Return ONLY valid JSON:
         "FIX: how to fix the issue"
     ],
     "rollback_recommendation": {
-        "should_rollback": true/false,
+        "should_rollback": true,
         "urgency": "critical|high|medium|low",
         "command": "git revert <sha> or other rollback steps"
     }
 }"""
-

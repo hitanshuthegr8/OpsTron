@@ -9,7 +9,7 @@ export const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://opstron.onre
 export const TOKEN_KEY = "ops_token";
 export const AGENT_KEY = "ops_agent_key";
 
-function appPath(path: string): string {
+export function appPath(path: string): string {
   const base = import.meta.env.BASE_URL || "/";
   const cleanBase = base.endsWith("/") ? base.slice(0, -1) : base;
   const cleanPath = path.startsWith("/") ? path : `/${path}`;

@@ -1,7 +1,7 @@
 """
 Health Check Routes
 
-Provides system health and status endpoints.
+Simple status endpoints for load balancers, uptime monitors, and dashboards.
 """
 
 from fastapi import APIRouter
@@ -13,33 +13,26 @@ router = APIRouter()
 @router.get("/health")
 async def health_check():
     """
-    System health check endpoint.
-    
-    Returns:
-        dict: Health status including version, mode, and available agents.
+    System health check.
+
+    Returns the current status of the service. Suitable for use as a
+    Railway / Render / ECS health check target.
     """
     return {
         "status": "healthy",
         "version": "3.0.0",
-        "mode": "automated_ingestion",
-        "llm_backend": "ollama",  # or "gemini"
+        "llm_backend": "groq",
         "agents": ["log", "commit", "runbook", "synthesizer"],
-        "endpoints": {
-            "ingest": "POST /ingest-error (automated)",
-            "analyze": "POST /analyze (manual upload)",
-            "commits": "GET /commits",
-            "github": "GET/POST /config/github"
-        },
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
 @router.get("/")
 async def root():
-    """Root endpoint - redirects to health check info."""
+    """Root endpoint — points to docs and health check."""
     return {
         "service": "OpsTron RCA Agent",
         "version": "3.0.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
     }

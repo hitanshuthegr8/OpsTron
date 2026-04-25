@@ -1,9 +1,9 @@
 """
-Error Ingestion Routes (MVP3 + MVP4 Deployment Protection)
+Error Ingestion Routes
 
 Handles automated error ingestion from backend services.
-This is the core MVP3 feature that enables automatic RCA triggering.
-MVP4 adds deployment protection with GitHub Actions integration.
+This is the core feature that enables automatic RCA triggering.
+Deployment protection is added with GitHub Actions integration.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Request
@@ -33,7 +33,7 @@ RCA_HISTORY: List[Dict[str, Any]] = []
 MAX_HISTORY_SIZE = 50
 
 # =============================================================================
-# Deployment Watcher (MVP4)
+# Deployment Watcher
 # =============================================================================
 
 class DeploymentWatcher:
@@ -106,8 +106,7 @@ class DeploymentWatcher:
 
         # DB fallback — memory was wiped (Render restart)
         try:
-            from app.db.supabase_client import db as _db
-            db_deploy = await _db.get_active_deployment_db()
+            db_deploy = await db.get_active_deployment_db()
             if db_deploy:
                 dep_id = db_deploy.get("id", "deploy-recovered")
                 watch_until = (now + timedelta(minutes=1)).isoformat()  # short remaining window
@@ -142,7 +141,7 @@ deployment_watcher = DeploymentWatcher(watch_duration_minutes=5)
 @router.post("/ingest-error", response_model=IngestResponse)
 async def ingest_error(payload: ErrorPayload, _agent: dict = AgentKeyAuth):
     """
-    MVP3 Automated Error Ingestion Endpoint.
+    Automated Error Ingestion Endpoint.
     
     Receives structured error payloads from backend services and
     automatically triggers the RCA pipeline without manual uploads.
@@ -165,7 +164,7 @@ async def ingest_error(payload: ErrorPayload, _agent: dict = AgentKeyAuth):
     logger.info(f"[{request_id}] Error: {payload.error}")
     logger.info(f"[{request_id}] Environment: {payload.env}")
     
-    # MVP4: Check if we're in deployment watch mode
+    # Check if we're in deployment watch mode
     active_deployment = await deployment_watcher.get_active_deployment()
     deployment_context = None
     
@@ -222,7 +221,7 @@ async def ingest_error(payload: ErrorPayload, _agent: dict = AgentKeyAuth):
             "extra": payload.extra
         }
         
-        # MVP4: Include deployment context in metadata
+        # Include deployment context in metadata
         if deployment_context:
             metadata["deployment_context"] = deployment_context
         
@@ -364,13 +363,13 @@ def _add_deployment_context_to_logs(log_text: str, deployment_context: Dict[str,
 
 
 # =============================================================================
-# Deployment Notification Routes (MVP4)
+# Deployment Notification Routes
 # =============================================================================
 
 @router.post("/notify-deployment", response_model=DeploymentResponse, dependencies=[GitHubWebhookAuth])
 async def notify_deployment(request: Request):
     """
-    MVP4 Deployment Notification Endpoint.
+    Deployment Notification Endpoint.
     
     Called natively by GitHub Webhooks when code is pushed. Puts OpsTron into
     "Deployment Watch Mode" for the next 5 minutes.
@@ -532,7 +531,7 @@ async def get_rca_history(limit: int = 20, _user: dict = GitHubAuth):
 # =============================================================================
 
 @router.post("/agent/logs/ingest", response_model=AgentLogResponse)
-async def ingest_agent_logs(payload: AgentLogPayload, agent_identity: dict = AgentKeyAuth):
+async def ingest_agent_logs(payload: AgentLogPayload, _agent: dict = AgentKeyAuth):
     """
     Endpoint for the lightweight OpsTron Docker Agent.
     

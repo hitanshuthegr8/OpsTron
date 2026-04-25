@@ -148,7 +148,7 @@ class Database:
         result = self.client.table("commits").select("*").eq("sha", sha).execute()
         return result.data[0] if result.data else None
     
-    async def get_recent_commits(self, repository: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+    async def get_recent_commits(self, repository: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent analyzed commits."""
         if not self.client:
             return []

@@ -39,7 +39,6 @@ import {
   fetchRepos,
   installWebhook,
   fetchAgentStatus,
-  AGENT_KEY,
   BACKEND,
   type Repo,
 } from "@/lib/api";
@@ -370,10 +369,6 @@ function StepDocker({ apiKey }: { apiKey: string }) {
 
   // Poll for agent connection every 4 seconds
   useEffect(() => {
-    const agentKey = typeof window !== "undefined"
-      ? (localStorage.getItem(AGENT_KEY) ?? apiKey)
-      : apiKey;
-
     const poll = async () => {
       const status = await fetchAgentStatus();
       if (status?.status === "connected" || status?.agent_connected === true) {

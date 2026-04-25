@@ -79,8 +79,6 @@ async def configure_github(config: GitHubConfigRequest):
     Returns:
         GitHubConfigResponse: Configuration status.
     """
-    global github_config
-    
     github_config["token"] = config.token
     github_config["repo"] = config.repo
     

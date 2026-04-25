@@ -215,8 +215,8 @@ export function logout() {
 }
 
 export function regenerateApiKey() {
-  // Backend-managed key rotation endpoint is not available yet.
-  // Keep current key so existing agents don't break unexpectedly.
+  // TODO: Implement actual backend call to rotate API key
+  console.warn("regenerateApiKey is currently a stub and does not generate a new key.");
   return getState().apiKey;
 }
 

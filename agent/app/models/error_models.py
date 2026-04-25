@@ -91,15 +91,6 @@ class ErrorPayload(BaseModel):
         }
 
 
-class ErrorPayloadMinimal(BaseModel):
-    """
-    Minimal error payload with only required fields.
-    Useful for simpler integrations.
-    """
-    service: str
-    error: str
-    stacktrace: str = ""
-
 
 class RCAReport(BaseModel):
     """
