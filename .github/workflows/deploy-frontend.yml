@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'lov_frontend/opstron-delight/**'
+      - '.github/workflows/deploy-frontend.yml'
   workflow_dispatch:   # allow manual trigger
 
 permissions:
