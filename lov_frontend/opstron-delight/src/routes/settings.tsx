@@ -203,6 +203,7 @@ function Integrations() {
 
       <Card title="Channels" desc="Where OpsTron sends notifications.">
         <div className="space-y-4">
+          <Row name="Main service" value={state.onboarding.serviceName} placeholder="No service configured" />
           <Row name="Slack" value={state.onboarding.slackWebhook} placeholder="No webhook configured" />
           <Row name="Email" value={state.onboarding.onCallEmail} placeholder="No email configured" />
           <Row name="PagerDuty" value="" placeholder="Coming soon" comingSoon />

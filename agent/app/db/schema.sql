@@ -276,6 +276,82 @@ GRANT ALL ON connected_repos TO service_role;
 
 
 -- =============================================================================
+-- Table 9: Agent Events
+-- =============================================================================
+-- Structured event audit log for Docker crashes, deployment events, health
+-- events, and log-derived errors.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS agent_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_id TEXT NOT NULL UNIQUE,
+  github_id TEXT NOT NULL REFERENCES opstron_users(github_id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  service_name TEXT NOT NULL,
+  container_id TEXT,
+  container_name TEXT,
+  exit_code TEXT,
+  reason TEXT,
+  restart_count INTEGER DEFAULT 0,
+  severity TEXT NOT NULL,
+  confidence INTEGER DEFAULT 0,
+  rca_triggered BOOLEAN DEFAULT FALSE,
+  phone_alert_triggered BOOLEAN DEFAULT FALSE,
+  correlation JSONB DEFAULT '{}'::jsonb,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_events_user ON agent_events(github_id);
+CREATE INDEX IF NOT EXISTS idx_agent_events_type ON agent_events(type);
+CREATE INDEX IF NOT EXISTS idx_agent_events_service ON agent_events(service_name);
+CREATE INDEX IF NOT EXISTS idx_agent_events_created ON agent_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_events_event_id ON agent_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_agent_events_user_service_created ON agent_events(github_id, service_name, created_at DESC);
+
+ALTER TABLE agent_events ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON agent_events TO service_role;
+
+
+-- Add service mapping metadata to connected repos for deployment correlation.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'connected_repos' AND column_name = 'service_name'
+  ) THEN
+    ALTER TABLE connected_repos ADD COLUMN service_name TEXT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'connected_repos' AND column_name = 'service_names'
+  ) THEN
+    ALTER TABLE connected_repos ADD COLUMN service_names JSONB DEFAULT '[]'::jsonb;
+  END IF;
+END $$;
+
+
+-- Add watched services metadata to deployments.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'deployments' AND column_name = 'service_name'
+  ) THEN
+    ALTER TABLE deployments ADD COLUMN service_name TEXT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'deployments' AND column_name = 'services_watched'
+  ) THEN
+    ALTER TABLE deployments ADD COLUMN services_watched JSONB DEFAULT '[]'::jsonb;
+  END IF;
+END $$;
+
+
+-- =============================================================================
 -- Migrate existing tables to support multi-tenancy
 -- (Safe: uses IF NOT EXISTS / DO NOTHING patterns)
 -- =============================================================================

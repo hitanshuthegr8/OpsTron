@@ -214,6 +214,10 @@ class DeploymentResponse(BaseModel):
     message: str = Field(
         description="Human readable status message"
     )
+    services_watched: List[str] = Field(
+        default_factory=list,
+        description="Services placed into deployment watch mode"
+    )
 
 
 # =============================================================================

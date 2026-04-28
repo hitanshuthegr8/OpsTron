@@ -1,537 +1,771 @@
-# OpsTron Event System — Complete Implementation Plan
+# OpsTron Event System - Production Implementation Plan
 
-## 1. SYSTEM OVERVIEW
+## 1. System Overview
 
-### Architecture
+OpsTron needs a structured event system so Docker crashes, deployment webhooks,
+application log errors, and heartbeat state all flow through one consistent
+pipeline.
 
-```
-┌─────────────────┐     POST /agent/events      ┌──────────────────────────────┐
-│  Docker Agent    │ ──────────────────────────▶  │  FastAPI Backend              │
-│  (per server)    │     POST /agent/heartbeat    │                              │
-│                  │ ──────────────────────────▶  │  ┌────────────────────────┐  │
-└─────────────────┘                               │  │    Event Engine         │  │
-                                                  │  │  enrich → classify →   │  │
-┌─────────────────┐     POST /notify-deployment   │  │  correlate → dedup →   │  │
-│  GitHub Webhook  │ ──────────────────────────▶  │  │  cooldown → route      │  │
-└─────────────────┘                               │  └──────────┬─────────────┘  │
-                                                  │             │                │
-┌─────────────────┐     POST /ingest-error        │    ┌────────┴────────┐       │
-│  SDK/Middleware  │ ──────────────────────────▶  │    │   Router         │       │
-└─────────────────┘                               │    ├─ phone call      │       │
-                                                  │    ├─ RCA pipeline    │       │
-                                                  │    ├─ dashboard store │       │
-                                                  │    └─────────────────┘       │
-                                                  │             │                │
-                                                  │    ┌────────▼────────┐       │
-                                                  │    │   Supabase      │       │
-                                                  │    │   (repos)       │       │
-                                                  │    └─────────────────┘       │
-                                                  └──────────────────────────────┘
-```
+The production path is:
 
-### Data Flow
+```text
+Docker Agent
+  -> POST /agent/events
+  -> EventEngine
+  -> enrich -> classify -> correlate -> dedup -> cooldown -> route
+  -> RCA pipeline, phone alert, and agent_events storage
 
-```
-Agent detects Docker event (die/oom/restart)
-  → Agent sends structured payload to POST /agent/events
-  → Backend enriches: adds event_id, source, service_name, normalized timestamp
-  → Backend classifies: assigns severity (critical/high/medium/low)
-  → Backend correlates: checks watch_mode[service] for active deployment window
-  → Backend deduplicates: checks container_id + event_type + reason within 60s
-  → Backend checks cooldown: max 1 phone alert per user+service per 5 min
-  → Backend routes:
-      crash + watch + confidence > 60  → phone call + RCA + store
-      crash (no watch)                 → RCA + store
-      log_error + watch               → RCA + store
-      log_error (no watch)            → store only
-      health_unhealthy                → store only
+GitHub Webhook
+  -> POST /notify-deployment
+  -> strict HMAC verification
+  -> service mapping
+  -> shared WatchModeManager
+  -> deployment_detected event
+
+Old Agent / SDK
+  -> POST /agent/logs/ingest or POST /ingest-error
+  -> converted to log_error event where appropriate
+  -> EventEngine
 ```
 
----
+## 2. Non-Negotiable Architecture Decisions
 
-## 2. PHASED IMPLEMENTATION PLAN
+These decisions must be made before coding the engine. They prevent the most
+likely production failures.
 
-### Phase 1: Data Models & Event Schema (3 tasks, ~60 min)
+### 2.1 One Shared Runtime
 
-#### Task 1.1: Create event_models.py
-- **Goal**: Define strict Pydantic models for all event types
-- **Input**: System requirement #2 (explicit event schema)
-- **Output**: `app/models/event_models.py`
-- **Steps**:
-  1. Create `EventType` as `Literal["container_crash","container_restart","container_start","health_unhealthy","deployment_detected"]`
-  2. Create `EventSource` as `Literal["agent","webhook","manual"]`
-  3. Create `AgentEventPayload` with: type, source, container_id, container_name, timestamp, exit_code, reason, image_hash, restart_count, logs, metadata
-  4. Create `EnrichedEvent` extending payload with: event_id (uuid), service_name, severity, correlation dict, confidence score
-  5. Create `AgentEventResponse` with: status, message, event_id, rca_triggered, confidence, reasons list
-  6. Create `ConfidenceResult` with: score (int 0-100), reasons (list of strings)
+Do not instantiate `WatchModeManager`, `EventEngine`, `EventDeduplicator`, or
+`AlertCooldown` separately inside route modules.
 
-#### Task 1.2: Create watch mode model
-- **Goal**: Define data structures for service-scoped watch mode
-- **Input**: System requirement #4
-- **Output**: Types in `event_models.py`
-- **Steps**:
-  1. Create `WatchEntry` with: service_name, commit_sha, repository, author, branch, image_hash, started_at, expires_at, source (webhook/agent)
-  2. Create `WatchStatus` response model: service_name, is_active, time_remaining_seconds, commit_sha, triggered_by
+Create one shared runtime module:
 
-#### Task 1.3: Update schema.sql with agent_events table
-- **Goal**: Add persistent storage for structured events
-- **Input**: System requirement #11 (traceability)
-- **Output**: Updated `app/db/schema.sql`
-- **Steps**:
-  1. Create `agent_events` table: id, event_id (unique text), github_id, type, source, service_name, container_id, container_name, exit_code, reason, restart_count, severity, confidence, rca_triggered, correlation (jsonb), metadata (jsonb), created_at
-  2. Add indexes on: github_id, type, service_name, created_at DESC, event_id
-  3. Grant service_role access
-  4. Enable RLS
+```text
+app/core/runtime.py
+```
 
----
+It owns:
 
-### Phase 2: Event Engine Core (5 tasks, ~150 min)
+- `watch_manager`
+- `event_deduplicator`
+- `alert_cooldown`
+- `event_engine`
+- shared `orchestrator`
+- shared alert service
 
-#### Task 2.1: Create dedup.py
-- **Goal**: Build deduplication and alert cooldown
-- **Input**: System requirements #5 and #6
-- **Output**: `app/core/dedup.py`
-- **Steps**:
-  1. Create `EventDeduplicator` class with `_seen: Dict[str, float]` mapping `"{container_id}:{type}:{reason}" → timestamp`
-  2. Implement `is_duplicate(event) → bool` — returns True if same composite key seen within 60s
-  3. Implement `_cleanup()` to prune keys older than 120s (called lazily)
-  4. Create `AlertCooldown` class with `_last_alert: Dict[str, float]` mapping `"{user_id}:{service_name}" → timestamp`
-  5. Implement `can_alert(user_id, service) → bool` — True if no alert sent for this user+service in last 300s
-  6. Implement `record_alert(user_id, service)` — stamps the time
+All route modules import these same instances. This avoids the bug where
+`/notify-deployment` writes a watch into one manager and `/agent/events` reads
+from another empty manager.
 
-#### Task 2.2: Create watch_manager.py
-- **Goal**: Build service-scoped watch mode manager
-- **Input**: System requirement #4
-- **Output**: `app/core/watch_manager.py`
-- **Steps**:
-  1. Create `WatchModeManager` class with `_watches: Dict[str, WatchEntry]` keyed by service_name
-  2. Implement `start_watch(service, commit_sha, repo, author, branch, source, image_hash, duration_minutes=5)`
-  3. Implement `get_watch(service) → Optional[WatchEntry]` — returns None if expired, cleans up expired entries
-  4. Implement `reinforce_watch(service, extra_minutes=2)` — extends existing watch window
-  5. Implement `get_all_active() → List[WatchEntry]` — for dashboard display
-  6. Add DB fallback: on `get_watch()` miss, query `deployments` table for recent `status='watching'` rows (same as current DeploymentWatcher fallback logic)
+### 2.2 Service Mapping Is Required
 
-#### Task 2.3: Create event_engine.py — enrichment + classification
-- **Goal**: Build the first two pipeline stages
-- **Input**: System requirements #1, #7, #8
-- **Output**: `app/core/event_engine.py` (partial)
-- **Steps**:
-  1. Create `EventEngine` class with __init__ taking watch_manager, dedup, cooldown
-  2. Implement `_enrich(event: AgentEventPayload, user_id: str) → EnrichedEvent`:
-     - Generate `event_id` via `uuid4()`
-     - Set `source` from payload (default "agent")
-     - Map `container_name` → `service_name` (strip prefixes like project name)
-     - Normalize timestamp to UTC ISO format
-     - Copy all fields from payload into EnrichedEvent
-  3. Implement `_classify(event: EnrichedEvent) → str` returning severity:
-     - `container_crash` + exit_code != "0" → "critical"
-     - `container_restart` + restart_count > 3 → "critical" (crash loop)
-     - `container_crash` + exit_code == "0" → "high" (graceful stop)
-     - `health_unhealthy` → "warning"
-     - `container_start` → "info"
-     - `deployment_detected` → "info"
+GitHub webhooks provide repository, branch, commit, and author. Docker events
+provide container and service names. The system must define how these align.
 
-#### Task 2.4: Create event_engine.py — correlation + confidence
-- **Goal**: Build correlation and confidence scoring
-- **Input**: System requirement #7
-- **Output**: Continue `app/core/event_engine.py`
-- **Steps**:
-  1. Implement `_correlate(event: EnrichedEvent, user_id: str) → Optional[dict]`:
-     - Call `watch_manager.get_watch(event.service_name)`
-     - If no active watch → return None
-     - Otherwise compute confidence via `_compute_confidence(event, watch)`
-  2. Implement `_compute_confidence(event, watch) → ConfidenceResult`:
-     - Start score = 0, reasons = []
-     - If `watch.image_hash != event.image_hash` and both non-empty: +40, append "Image changed since deployment"
-     - If crash within 120s of watch start: +30, append "Crash within 2 min of deploy"
-     - If `exit_code` not in ("", "0"): +20, append "Non-zero exit code"
-     - If `reason == "oom"`: +10, append "Out of memory signal"
-     - Return ConfidenceResult(score=score, reasons=reasons)
-  3. Store correlation result on enriched event: `{is_regression: score > 50, confidence: score, reasons: [...], watch: {...}}`
+MVP service mapping order:
 
-#### Task 2.5: Create event_engine.py — dedup, cooldown, routing
-- **Goal**: Build the final three pipeline stages + the main `process()` method
-- **Input**: System requirements #5, #6, #8, #9, #10
-- **Output**: Complete `app/core/event_engine.py`
-- **Steps**:
-  1. Implement the public `async process(event, user_id) → EventResult` method that calls all 6 stages in strict order: enrich → classify → correlate → dedup → cooldown → route
-  2. After correlate, call `dedup.is_duplicate(enriched)` — if True, return status="suppressed"
-  3. In route stage, implement the routing rules:
-     - crash + watch + confidence > 60 → trigger RCA, check cooldown for phone call
-     - crash (no watch or low confidence) → trigger RCA only
-     - container_restart + count > 3 → trigger RCA (crash loop)
-     - health_unhealthy → store to DB only
-     - container_start → store to DB only
-  4. For phone call routing: call `cooldown.can_alert(user_id, service)` — if False, skip call but still run RCA
-  5. Add agent-down guard: if event type is crash but last heartbeat for this user is > 90s old, log warning "Agent may be offline — suppressing crash event to prevent false positive"
-  6. Persist event to `agent_events` table via incident_repo
-  7. Return EventResult with status, event_id, rca_triggered, confidence, reasons
+1. Use explicit mapping from config or onboarding metadata:
+   - `repo_full_name -> [service_name]`
+   - store this in `connected_repos.service_names` or a new table later.
+2. If no mapping exists, fall back to Docker agent heartbeat:
+   - watched services = current `monitored_containers` for that user.
+3. If still unknown, start a user-scoped repo watch, but mark confidence lower.
 
----
+Do not silently assume repository name equals service name.
 
-### Phase 3: Route Splitting (4 tasks, ~120 min)
+### 2.3 EventEngine Owns Alerts
 
-#### Task 3.1: Create routes/agent.py
-- **Goal**: Move all agent endpoints from ingest.py to dedicated file
-- **Input**: Current ingest.py lines 529-712
-- **Output**: `app/api/routes/agent.py` (~200 lines)
-- **Steps**:
-  1. Create new file with router = APIRouter()
-  2. Move `HeartbeatPayload`, `_heartbeats` dict, `_resolve_heartbeat()` helper
-  3. Move `POST /agent/heartbeat` handler
-  4. Move `GET /agent/status` handler
-  5. Move `GET /agent/status/by-session` handler
-  6. Move `POST /agent/logs/ingest` handler — refactor to internally convert log payloads into `log_error` events and feed into EventEngine when errors detected
-  7. Add new `POST /agent/events` handler — receives `AgentEventPayload`, calls `EventEngine.process()`, returns `AgentEventResponse`
-  8. Import EventEngine, instantiate as module-level singleton
+Only `EventEngine` decides whether to trigger a phone call.
 
-#### Task 3.2: Create routes/deployments.py
-- **Goal**: Move all deployment endpoints from ingest.py
-- **Input**: Current ingest.py lines 35-503
-- **Output**: `app/api/routes/deployments.py` (~200 lines)
-- **Steps**:
-  1. Create new file with router
-  2. Import WatchModeManager, instantiate as module-level singleton
-  3. Move `POST /notify-deployment` — refactor to use WatchModeManager.start_watch() instead of DeploymentWatcher
-  4. Also create a `deployment_detected` event via EventEngine when webhook arrives
-  5. Move `GET /deployment-status` — use WatchModeManager.get_all_active()
-  6. Move `GET /deployment-history` — query deployments table
-  7. Delete the old `DeploymentWatcher` class entirely
+`RCAOrchestrator` should run analysis and return a report. It should not call
+Twilio directly after this refactor. Otherwise one incident can produce two
+phone calls.
 
-#### Task 3.3: Rename ingest.py → errors.py
-- **Goal**: Slim down to only error ingestion and RCA history
-- **Input**: Current ingest.py lines 141-527
-- **Output**: `app/api/routes/errors.py` (~200 lines)
-- **Steps**:
-  1. Rename file
-  2. Keep `POST /ingest-error` — refactor to use WatchModeManager instead of DeploymentWatcher
-  3. Keep `GET /rca-history`
-  4. Keep helper functions `_prepare_log_text()` and `_add_deployment_context_to_logs()`
-  5. Keep `RCA_HISTORY` in-memory list and `orchestrator` instance
-  6. Remove everything else (already moved to agent.py and deployments.py)
+### 2.4 Strict Webhook Security
 
-#### Task 3.4: Update router registration
-- **Goal**: Wire new route modules into the app
-- **Input**: `app/api/__init__.py` and `app/api/routes/__init__.py`
-- **Output**: Updated both files
-- **Steps**:
-  1. In `routes/__init__.py`: add imports for agent, deployments, errors; remove ingest
-  2. In `api/__init__.py`: register new routers with proper tags:
-     - `agent.router` → tags=["Docker Agent"]
-     - `deployments.router` → tags=["Deployments"]
-     - `errors.router` → tags=["Error Ingestion"]
-  3. Remove `ingest.router` registration
-  4. Verify: `python -c "from app.api import api_router"`
+When `WEBHOOK_SECRET` is configured, missing or invalid
+`X-Hub-Signature-256` must return `401`.
 
----
+Local development may allow unsigned webhooks only when `WEBHOOK_SECRET` is not
+configured.
 
-### Phase 4: Repository Pattern (4 tasks, ~90 min)
+### 2.5 Persistence Comes Before Engine Routing
 
-#### Task 4.1: Create base repo + user_repo.py
-- **Goal**: Extract user-related DB methods
-- **Output**: `app/db/repos/user_repo.py`
-- **Steps**:
-  1. Create `app/db/repos/__init__.py`
-  2. Create `BaseRepo` class that takes a Supabase client in __init__
-  3. Create `UserRepo(BaseRepo)` with methods: `upsert_user`, `get_user_by_api_key`, `get_user_by_github_id`, `save_session_token`, `get_session_by_token`, `upsert_heartbeat`, `get_heartbeat`
-  4. Copy method bodies verbatim from `supabase_client.py`
+The engine cannot depend on repository classes that do not exist yet.
 
-#### Task 4.2: Create incident_repo.py
-- **Goal**: Extract incident/RCA/event DB methods
-- **Output**: `app/db/repos/incident_repo.py`
-- **Steps**:
-  1. Create `IncidentRepo(BaseRepo)` with: `create_rca_log`, `get_rca_logs`, `get_rca_by_deployment`, `create_event` (NEW — inserts into agent_events table), `create_vapi_call`, `update_vapi_call`, `get_vapi_calls`
-  2. `create_event()` takes an EnrichedEvent and persists to agent_events table
+Add `agent_events` schema and a simple `db.create_event()` method before
+building `EventEngine`. Later, the repository refactor can move the method into
+`IncidentRepo` without changing engine behavior.
 
-#### Task 4.3: Create deployment_repo.py + repo_repo.py
-- **Goal**: Extract remaining DB methods
-- **Output**: `app/db/repos/deployment_repo.py`, `app/db/repos/repo_repo.py`
-- **Steps**:
-  1. `DeploymentRepo(BaseRepo)`: `create_deployment`, `update_deployment`, `get_deployment`, `get_recent_deployments`, `get_active_deployment_db`
-  2. `RepoRepo(BaseRepo)`: `upsert_repo`
-  3. Also move `create_commit`, `get_commit_by_sha`, `get_recent_commits` into deployment_repo (they're deployment-related context)
+## 3. Optimal Execution Order
 
-#### Task 4.4: Refactor supabase_client.py into facade
-- **Goal**: Make Database class delegate to repos
-- **Output**: Slim `app/db/supabase_client.py` (~80 lines)
-- **Steps**:
-  1. Import all 4 repos
-  2. Database.__init__: create repo instances with shared client
-  3. Add delegation methods so `db.upsert_user()` calls `self._users.upsert_user()`
-  4. This preserves all existing `from app.db.supabase_client import db` imports
-  5. Delete chat_messages methods (move to incident_repo if needed, or drop if unused)
+### Phase 0: Architecture Lock-In (~45 min)
 
----
+#### Task 0.1: Create runtime.py singleton container
 
-### Phase 5: Agent Upgrade + Wiring (2 tasks, ~45 min)
+- Output: `app/core/runtime.py`
+- Instantiate exactly one shared set of runtime services.
+- Export:
+  - `watch_manager`
+  - `event_deduplicator`
+  - `alert_cooldown`
+  - `event_engine`
+  - `orchestrator`
+  - `twilio_service`
 
-#### Task 5.1: Upgrade opstron_forwarder.py
-- **Goal**: Send structured events to /agent/events for crashes
-- **Output**: Updated `opstron_forwarder.py`
-- **Steps**:
-  1. Add `EVENT_URL = f"{BACKEND_URL}/agent/events"` constant
-  2. In `watch_events()` crash handler (line 265), change payload to structured format: type="container_crash", reason inferred from action (die→exit, oom→oom, kill→sigkill), include restart_count from `container.attrs.get("RestartCount", 0)`
-  3. POST to EVENT_URL instead of INGEST_URL for crash events
-  4. Keep the regular `poll_logs()` loop posting to INGEST_URL unchanged (backward compat)
-  5. Add a try/except: if /agent/events returns 404 (old backend), fall back to INGEST_URL
+#### Task 0.2: Define service mapping MVP
 
-#### Task 5.2: Update main.py
-- **Goal**: Clean up entry point
-- **Output**: Updated `main.py`
-- **Steps**:
-  1. Remove stale MVP labels from docstring
-  2. Verify lifespan startup/shutdown still works
-  3. Run full import check
+- Output: comments/config in `watch_manager.py` and deployment route.
+- Use explicit repo-to-service mapping when available.
+- Fall back to current user's heartbeat `monitored_containers`.
+- Persist `services_watched` in deployment metadata.
 
----
+#### Task 0.3: Move alert ownership decision into the plan
 
-## 3. API CONTRACTS
+- EventEngine handles phone alerts and cooldown.
+- Orchestrator returns RCA only.
+- Remove or disable Twilio side effect from `RCAOrchestrator.analyze()`.
+
+#### Task 0.4: Fix webhook HMAC behavior
+
+- If `WEBHOOK_SECRET` exists:
+  - missing signature -> `401`
+  - invalid signature -> `401`
+- If no secret exists:
+  - permit request for local dev with warning.
+
+## 4. Phase 1: Models and Minimal Persistence (~90 min)
+
+### Task 1.1: Create event_models.py
+
+- Output: `app/models/event_models.py`
+
+Create:
+
+- `EventType = Literal["container_crash", "container_restart", "container_start", "health_unhealthy", "deployment_detected", "log_error"]`
+- `EventSource = Literal["agent", "webhook", "manual", "sdk"]`
+- `Severity = Literal["critical", "high", "medium", "low", "warning", "info"]`
+- `AgentEventPayload`
+- `EnrichedEvent`
+- `AgentEventResponse`
+- `ConfidenceResult`
+- `EventResult`
+- `WatchEntry`
+- `WatchStatus`
+
+`AgentEventPayload` fields:
+
+- `type`
+- `source = "agent"`
+- `container_id`
+- `container_name`
+- `service_name`
+- `timestamp`
+- `exit_code`
+- `reason`
+- `image_hash`
+- `restart_count`
+- `logs`
+- `metadata`
+
+Allow `service_name` to be optional on input, but ensure `EnrichedEvent`
+always has one after enrichment.
+
+### Task 1.2: Add agent_events table
+
+- Output: `app/db/schema.sql`
+
+Create `agent_events`:
+
+```sql
+CREATE TABLE IF NOT EXISTS agent_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_id TEXT NOT NULL UNIQUE,
+  github_id TEXT NOT NULL REFERENCES opstron_users(github_id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  service_name TEXT NOT NULL,
+  container_id TEXT,
+  container_name TEXT,
+  exit_code TEXT,
+  reason TEXT,
+  restart_count INTEGER DEFAULT 0,
+  severity TEXT NOT NULL,
+  confidence INTEGER DEFAULT 0,
+  rca_triggered BOOLEAN DEFAULT FALSE,
+  phone_alert_triggered BOOLEAN DEFAULT FALSE,
+  correlation JSONB DEFAULT '{}'::jsonb,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+Indexes:
+
+- `github_id`
+- `type`
+- `service_name`
+- `created_at DESC`
+- `event_id`
+- `(github_id, service_name, created_at DESC)`
+
+Enable RLS and grant `service_role`.
+
+### Task 1.3: Add minimal db.create_event()
+
+- Output: `app/db/supabase_client.py`
+
+Add a direct method on `Database`:
+
+```python
+async def create_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    ...
+```
+
+This is intentionally before the repo refactor. `IncidentRepo.create_event()`
+will replace the internals later while preserving the public `db.create_event()`
+facade.
+
+### Task 1.4: Decide severity storage
+
+Use the broader severity set on `agent_events`:
+
+- `critical`
+- `high`
+- `medium`
+- `low`
+- `warning`
+- `info`
+
+Do not reuse the restrictive `rca_logs.severity` check for event storage.
+
+## 5. Phase 2: Event Engine Core (~180 min)
+
+### Task 2.1: Create dedup.py
+
+- Output: `app/core/dedup.py`
+
+Create:
+
+- `EventDeduplicator`
+- `AlertCooldown`
+
+Rules:
+
+- Dedup key: `github_id:container_id:type:reason`
+- Dedup window: 60 seconds
+- Cleanup keys older than 120 seconds
+- Alert key: `github_id:service_name`
+- Alert cooldown: 300 seconds
+- Dedup suppresses RCA and phone calls, but the suppressed event may still be
+  stored for audit if desired.
+
+### Task 2.2: Create watch_manager.py
+
+- Output: `app/core/watch_manager.py`
+
+Create `WatchModeManager` keyed by:
+
+```text
+github_id:service_name
+```
+
+Methods:
+
+- `start_watch(github_id, service_name, commit_sha, repo, author, branch, source, image_hash=None, duration_minutes=5)`
+- `get_watch(github_id, service_name)`
+- `get_watches_for_user(github_id)`
+- `get_all_active()`
+- `reinforce_watch(github_id, service_name, extra_minutes=2)`
+- `cleanup_expired()`
+
+DB fallback:
+
+- On miss, query recent `deployments` rows with `status='watching'`.
+- Use persisted `services_watched` metadata where available.
+- Do not return watches for another user.
+
+### Task 2.3: Create event_engine.py - enrichment and classification
+
+- Output: `app/core/event_engine.py`
+
+`EventEngine.__init__` takes:
+
+- `watch_manager`
+- `dedup`
+- `cooldown`
+- `orchestrator`
+- `alert_service`
+- `db`
+
+Enrichment:
+
+- Generate `event_id`.
+- Normalize timestamp to UTC.
+- Resolve `service_name` in this order:
+  1. payload `service_name`
+  2. `metadata.service_name`
+  3. normalized `container_name`
+  4. `unknown-service`
+- Attach `github_id`.
+
+Classification:
+
+- `container_crash` + non-zero exit -> `critical`
+- `container_crash` + exit `0` -> `high`
+- `container_restart` + `restart_count > 3` -> `critical`
+- `log_error` during watch -> `high`
+- `log_error` without watch -> `medium`
+- `health_unhealthy` -> `warning`
+- `container_start` -> `info`
+- `deployment_detected` -> `info`
+
+### Task 2.4: Correlation and confidence
+
+Correlation:
+
+- Call `watch_manager.get_watch(github_id, event.service_name)`.
+- If no exact service watch exists, check user-scoped repo watch if implemented.
+- Return correlation with:
+  - `is_deployment_related`
+  - `is_regression`
+  - `confidence`
+  - `reasons`
+  - `watch`
+
+Confidence scoring:
+
+- `+40` image hash changed and both hashes are known.
+- `+30` crash/log error within 2 minutes of watch start.
+- `+20` non-zero exit code.
+- `+10` OOM reason or exit code `137`.
+- `+10` service name exactly matches explicit mapping.
+- `-20` fallback repo-level watch only.
+
+Regression threshold:
+
+- `confidence > 60`
+
+### Task 2.5: Routing and persistence
+
+`process(event, user_id)` order:
+
+1. enrich
+2. classify
+3. correlate
+4. deduplicate
+5. route
+6. persist final event result
+
+Routing:
+
+- `container_crash` + watch + confidence > 60 -> RCA + phone if cooldown allows + store
+- `container_crash` + no watch -> RCA + store
+- `container_crash` + watch + confidence <= 60 -> RCA + store, no phone
+- `container_restart` + restart_count > 3 -> RCA + store
+- `log_error` + watch -> RCA + store
+- `log_error` + no watch -> store only
+- `health_unhealthy` -> store only
+- `container_start` -> store only
+- `deployment_detected` -> store only
+
+Agent-down guard:
+
+- If a crash event arrives and last heartbeat is older than 90 seconds, mark
+  `metadata.agent_stale = true`.
+- Do not blindly suppress all stale crash events; prefer lowering confidence or
+  suppressing phone calls only. A delayed crash event can still be useful for RCA.
+
+Phone alert:
+
+- Check `cooldown.can_alert(user_id, service_name)`.
+- If allowed, call alert service and then `record_alert`.
+- If blocked, still run RCA and store event.
+
+Persistence:
+
+- Call `db.create_event()` with final enriched event and routing result.
+- Store `rca_triggered` and `phone_alert_triggered`.
+
+## 6. Phase 3: API Endpoint and Agent Integration (~120 min)
+
+### Task 3.1: Add POST /agent/events
+
+- Output: initially add to existing `ingest.py`, or directly to `routes/agent.py`
+  if route splitting has already begun.
+
+Handler:
+
+- Auth: `AgentKeyAuth`
+- Input: `AgentEventPayload`
+- Calls shared `event_engine.process(payload, user_id=agent_identity["user_id"])`
+- Returns `AgentEventResponse`
+
+Do not instantiate a new engine inside the route.
+
+### Task 3.2: Convert /agent/logs/ingest to log_error events
+
+Current behavior must remain backward compatible.
+
+Rules:
+
+- Always accept old log payloads.
+- If logs contain error signals (`error`, `exception`, `traceback`, `fatal`,
+  `panic`, `segmentation fault`), create a `log_error` event and send it to
+  `EventEngine`.
+- If logs are healthy, return `received` without RCA.
+
+### Task 3.3: Update opstron_forwarder.py
+
+Add:
+
+```python
+EVENT_URL = f"{BACKEND_URL}/agent/events"
+```
+
+Crash event payload:
+
+- `type = "container_crash"`
+- `source = "agent"`
+- `container_id`
+- `container_name`
+- `timestamp`
+- `exit_code`
+- `reason`
+- `image_hash`
+- `restart_count`
+- `logs`
+- `metadata.event_action`
+
+Reason mapping:
+
+- `oom` -> `oom`
+- `kill` -> `sigkill`
+- `die` with exit `0` -> `exit_zero`
+- `die` with non-zero exit -> `exit_nonzero`
+- `stop` -> `stopped`
+
+Fallback:
+
+- If `/agent/events` returns `404`, post the crash logs to
+  `/agent/logs/ingest` for old backend compatibility.
+
+### Task 3.4: Update /notify-deployment
+
+Use strict HMAC verification and shared `watch_manager`.
+
+Steps:
+
+1. Parse GitHub push payload.
+2. Resolve `github_id` or connected repo owner.
+3. Resolve `services_watched` using service mapping.
+4. For each service, call shared `watch_manager.start_watch(...)`.
+5. Persist deployment with `services_watched`.
+6. Emit `deployment_detected` event through EventEngine or store directly.
+
+Response includes:
+
+- `status`
+- `deployment_id`
+- `commit_sha`
+- `watch_until`
+- `services_watched`
+- `message`
+
+## 7. Phase 4: Route Split (~90 min)
+
+After the event path works, split routes. This reduces risk because behavior is
+already covered by tests.
+
+### Task 4.1: Create routes/agent.py
+
+Move:
+
+- `POST /agent/events`
+- `POST /agent/logs/ingest`
+- `POST /agent/heartbeat`
+- `GET /agent/status`
+- `GET /agent/status/by-session`
+- `HeartbeatPayload`
+- heartbeat helper functions
+
+Import runtime singletons from `app.core.runtime`.
+
+### Task 4.2: Create routes/deployments.py
+
+Move:
+
+- `POST /notify-deployment`
+- `GET /deployment-status`
+- `GET /deployment-history`
+
+Use shared `watch_manager`.
+
+Do not instantiate `WatchModeManager` here.
+
+### Task 4.3: Rename ingest.py to errors.py
+
+Keep:
+
+- `POST /ingest-error`
+- `GET /rca-history`
+- `_prepare_log_text()`
+- `_add_deployment_context_to_logs()`
+
+Refactor `POST /ingest-error` to create a `log_error` event when possible.
+
+### Task 4.4: Update router registration
+
+Update:
+
+- `app/api/__init__.py`
+- `app/api/routes/__init__.py`
+
+Register:
+
+- `agent.router` with `tags=["Docker Agent"]`
+- `deployments.router` with `tags=["Deployments"]`
+- `errors.router` with `tags=["Error Ingestion"]`
+
+Verify:
+
+```bash
+python -c "from app.api import api_router"
+```
+
+## 8. Phase 5: Repository Refactor (~90 min)
+
+This happens after `db.create_event()` already exists and works.
+
+### Task 5.1: Create repos package
+
+Create:
+
+- `app/db/repos/__init__.py`
+- `app/db/repos/base.py`
+- `app/db/repos/user_repo.py`
+- `app/db/repos/incident_repo.py`
+- `app/db/repos/deployment_repo.py`
+- `app/db/repos/repo_repo.py`
+
+### Task 5.2: Move methods into repos
+
+`UserRepo`:
+
+- `upsert_user`
+- `get_user_by_api_key`
+- `get_user_by_github_id`
+- `save_session_token`
+- `get_session_by_token`
+- `upsert_heartbeat`
+- `get_heartbeat`
+
+`IncidentRepo`:
+
+- `create_rca_log`
+- `get_rca_logs`
+- `get_rca_by_deployment`
+- `create_event`
+- `create_vapi_call`
+- `update_vapi_call`
+- `get_vapi_calls`
+
+`DeploymentRepo`:
+
+- `create_deployment`
+- `update_deployment`
+- `get_deployment`
+- `get_recent_deployments`
+- `get_active_deployment_db`
+- `create_commit`
+- `get_commit_by_sha`
+- `get_recent_commits`
+
+`RepoRepo`:
+
+- `upsert_repo`
+
+### Task 5.3: Keep Database as facade
+
+`app/db/supabase_client.py` remains the public import path:
+
+```python
+from app.db.supabase_client import db
+```
+
+`Database` delegates to repos internally.
+
+Do not delete chat message methods unless a search confirms they are unused.
+
+## 9. Phase 6: Tests and Verification (~120 min)
+
+### Unit tests
+
+Minimum tests:
+
+- duplicate event within 60 seconds is suppressed
+- same event after 60 seconds is accepted
+- alert cooldown blocks second phone call within 5 minutes
+- confidence score crosses threshold for deployment crash
+- repo-level fallback lowers confidence
+- `log_error` event is valid EventType
+- stale heartbeat suppresses phone alert but stores event
+
+### Route tests
+
+Minimum tests:
+
+- `/agent/events` rejects missing API key
+- `/agent/events` accepts valid crash event
+- `/agent/logs/ingest` converts error logs to `log_error`
+- `/agent/logs/ingest` ignores healthy logs
+- `/notify-deployment` rejects missing signature when secret exists
+- `/notify-deployment` creates service-scoped watches
+
+### Import checks
+
+Run:
+
+```bash
+python -c "from app.api import api_router"
+python -c "from app.core.runtime import event_engine, watch_manager"
+```
+
+## 10. API Contracts
 
 ### POST /agent/events
 
-```
-Request:
-{
-  "type": "container_crash",          // REQUIRED: EventType enum
-  "source": "agent",                  // REQUIRED: "agent" | "webhook" | "manual"
-  "container_id": "a1b2c3d4e5f6",    // REQUIRED
-  "container_name": "checkout-api",   // REQUIRED
-  "timestamp": "2026-04-26T...",      // REQUIRED: ISO 8601
-  "exit_code": "137",                 // optional
-  "reason": "oom",                    // optional: oom, sigkill, exit_nonzero
-  "image_hash": "sha256:abc...",      // optional
-  "restart_count": 2,                 // optional, default 0
-  "logs": "last 100 lines...",        // optional: for RCA context
-  "metadata": {}                      // optional: free-form
-}
+Auth: `X-API-Key`
 
-Response (200):
+Request:
+
+```json
 {
-  "status": "rca_triggered",          // received | rca_triggered | suppressed | stored
+  "type": "container_crash",
+  "source": "agent",
+  "container_id": "a1b2c3d4e5f6",
+  "container_name": "checkout-api",
+  "service_name": "checkout-api",
+  "timestamp": "2026-04-26T01:05:00Z",
+  "exit_code": "137",
+  "reason": "oom",
+  "image_hash": "sha256:abc123",
+  "restart_count": 2,
+  "logs": "last 100 lines...",
+  "metadata": {
+    "event_action": "oom"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "status": "rca_triggered",
   "message": "Crash detected during active watch mode. RCA triggered.",
   "event_id": "evt-a1b2c3d4",
   "rca_triggered": true,
+  "phone_alert_triggered": true,
   "confidence": 80,
-  "reasons": ["Image changed since deployment", "Crash within 2 min of deploy"]
+  "reasons": [
+    "Image changed since deployment",
+    "Crash within 2 min of deploy"
+  ]
 }
-
-Auth: X-API-Key header (AgentKeyAuth)
-```
-
-### POST /agent/heartbeat
-
-```
-Request:
-{
-  "agent_version": "4.0.0",
-  "hostname": "prod-server-1",
-  "monitored_containers": ["checkout-api", "payment-service"]
-}
-
-Response (200):
-{
-  "status": "ok",
-  "message": "Heartbeat received"
-}
-
-Auth: X-API-Key header
 ```
 
 ### POST /notify-deployment
 
-```
-Request: Raw GitHub Push Event webhook payload (JSON)
-  Key fields extracted:
-  - repository.full_name
-  - head_commit.id (SHA)
-  - head_commit.author.username
-  - head_commit.message
-  - ref (branch)
+Auth: `X-Hub-Signature-256` when `WEBHOOK_SECRET` exists.
 
-Response (200):
+Response:
+
+```json
 {
   "status": "watching",
   "deployment_id": "deploy-a1b2c3d4",
-  "commit_sha": "abc1234...",
+  "commit_sha": "abc1234",
   "watch_until": "2026-04-26T01:10:00Z",
-  "services_watched": ["checkout-api"],    // NEW: which services are in watch mode
+  "services_watched": ["checkout-api", "worker"],
   "message": "Watch mode active for 5 minutes."
 }
-
-Auth: X-Hub-Signature-256 HMAC (GitHubWebhookAuth)
 ```
 
----
+## 11. Event Engine Rules
 
-## 4. DATA MODELS
+Pipeline order:
 
-### EnrichedEvent (internal, after enrichment)
-
-| Field | Type | Source |
-|---|---|---|
-| event_id | str (uuid) | Generated by engine |
-| type | EventType | From payload |
-| source | EventSource | From payload |
-| service_name | str | Mapped from container_name |
-| container_id | str | From payload |
-| container_name | str | From payload |
-| timestamp | str (ISO) | Normalized from payload |
-| exit_code | str | From payload |
-| reason | str | From payload |
-| image_hash | str | From payload |
-| restart_count | int | From payload |
-| logs | str | From payload |
-| severity | str | Set by classify stage |
-| correlation | dict or None | Set by correlate stage |
-| confidence | ConfidenceResult or None | Set by correlate stage |
-
-### WatchEntry (in-memory + DB backed)
-
-| Field | Type |
-|---|---|
-| service_name | str |
-| commit_sha | str |
-| repository | str |
-| author | str |
-| branch | str |
-| image_hash | str |
-| started_at | datetime |
-| expires_at | datetime |
-| source | "webhook" or "agent" |
-
-### agent_events (DB table)
-
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | auto |
-| event_id | TEXT UNIQUE | from enrichment |
-| github_id | TEXT FK | user who owns the agent |
-| type | TEXT | event type |
-| source | TEXT | agent/webhook/manual |
-| service_name | TEXT | mapped from container |
-| container_id | TEXT | |
-| container_name | TEXT | |
-| exit_code | TEXT | |
-| reason | TEXT | |
-| restart_count | INT | |
-| severity | TEXT | critical/high/medium/low |
-| confidence | INT | 0-100 |
-| rca_triggered | BOOL | |
-| correlation | JSONB | watch context if any |
-| metadata | JSONB | |
-| created_at | TIMESTAMPTZ | |
-
----
-
-## 5. EVENT ENGINE DESIGN
-
-### Pipeline (strict order, no skipping)
-
-```
+```text
 process(raw_event, user_id)
-  │
-  ├─ 1. ENRICH
-  │   • Generate event_id (uuid4)
-  │   • Set source (default "agent")
-  │   • Map container_name → service_name
-  │   • Normalize timestamp to UTC
-  │   • Attach container metadata
-  │
-  ├─ 2. CLASSIFY
-  │   • container_crash + exit != 0     → severity: critical
-  │   • container_restart + count > 3   → severity: critical
-  │   • container_crash + exit == 0     → severity: high
-  │   • health_unhealthy               → severity: warning
-  │   • container_start                → severity: info
-  │
-  ├─ 3. CORRELATE
-  │   • Check watch_manager.get_watch(service_name)
-  │   • If active watch → compute confidence score:
-  │       image_changed:        +40
-  │       crash_within_2min:    +30
-  │       exit_code_nonzero:    +20
-  │       oom_signal:           +10
-  │   • Return {is_regression, confidence, reasons[]}
-  │
-  ├─ 4. DEDUPLICATE
-  │   • Key = container_id:type:reason
-  │   • If same key seen within 60s → return "suppressed"
-  │
-  ├─ 5. COOLDOWN (alerts only)
-  │   • Key = user_id:service_name
-  │   • If phone alert sent within 300s → skip phone, still run RCA
-  │   • Dashboard/log alerts are NEVER blocked
-  │
-  └─ 6. ROUTE
-      • crash + watch + confidence > 60 → RCA + phone + store
-      • crash + watch + confidence ≤ 60 → RCA + store
-      • crash (no watch)               → RCA + store
-      • restart count > 3              → RCA + store
-      • health_unhealthy               → store only
-      • container_start                → store only
-      • log_error + watch              → RCA + store
-      • log_error (no watch)           → store only
+  -> enrich
+  -> classify
+  -> correlate
+  -> deduplicate
+  -> route
+  -> persist
 ```
 
----
+Routing matrix:
 
-## 6. EDGE CASES
+| Event | Watch | Confidence | Action |
+|---|---:|---:|---|
+| `container_crash` | yes | > 60 | RCA + phone if cooldown allows + store |
+| `container_crash` | yes | <= 60 | RCA + store |
+| `container_crash` | no | 0 | RCA + store |
+| `container_restart` loop | any | any | RCA + store |
+| `log_error` | yes | any | RCA + store |
+| `log_error` | no | any | store only |
+| `health_unhealthy` | any | any | store only |
+| `container_start` | any | any | store only |
+| `deployment_detected` | any | any | store only |
 
-| # | Scenario | Expected Behavior |
-|---|---|---|
-| 1 | Container crash-loops (10 crashes in 30s) | Dedup suppresses after first. Only 1 RCA triggered. |
-| 2 | Agent disconnects, containers keep running | Heartbeat timeout → mark agent "offline". No false crash alerts. |
-| 3 | Two services deploy simultaneously | Each gets its own watch entry. Independent correlation. |
-| 4 | GitHub webhook arrives but agent is not running | Watch mode starts. If no crash events arrive, watch expires silently. |
-| 5 | Backend restarts during active watch mode | WatchManager falls back to deployments table in Supabase. Watch is recovered. |
-| 6 | Same crash event sent by both log polling AND event stream | Dedup catches it — same container_id + type within 60s. |
-| 7 | OOM kill with exit code 137 | Classified as critical. Confidence +10 for OOM reason. Phone call if in watch mode. |
-| 8 | Graceful container stop (exit 0) during watch | Severity = high (not critical). Confidence lower. RCA runs but no phone call. |
-| 9 | Old agent (v4.0) sends to /agent/logs/ingest | Backward compat handler converts to log_error event, feeds into engine. |
-| 10 | LLM (Groq) is down when RCA is triggered | Orchestrator catches exception, returns partial report with error field. Event still stored. |
-| 11 | User gets phone call, container recovers, crashes again in 3 min | Cooldown blocks second phone call (5 min window). RCA still runs. Dashboard updated. |
-| 12 | Webhook payload has no head_commit (empty push) | Existing fallback logic: try commits[-1], then `after` SHA. If all fail, 400 error. |
+## 12. Edge Cases
 
----
-
-## 7. FAILURE HANDLING
-
-### Agent Disconnects
-- Heartbeat stops arriving (normally every 60s)
-- After 90s: `get_agent_status` returns `status: "offline"`
-- **Guard**: If a crash event arrives but last heartbeat > 90s old, log warning and suppress to prevent false positives from stale/delayed events
-
-### Duplicate Events
-- `EventDeduplicator` uses composite key `container_id:type:reason`
-- Window: 60 seconds
-- Lazy cleanup: keys older than 120s pruned on next check
-- Result: second identical event returns `status: "suppressed"`
-
-### Backend Restarts
-- **Watch mode**: `WatchModeManager.get_watch()` falls back to Supabase `deployments` table (query for `status='watching'` in last 5 min)
-- **Sessions**: `verify_github_session()` already falls back to Supabase `opstron_users.session_token`
-- **Heartbeats**: `_resolve_heartbeat()` already falls back to Supabase `opstron_users.agent_*` columns
-- **Dedup/cooldown state**: Lost on restart. Acceptable — worst case is one extra RCA or one extra phone call
-
-### LLM Fails
-- `RCAOrchestrator.analyze()` catches exceptions in each agent step
-- `SynthesizerAgent` returns a partial report with `root_cause: "analysis_failed"`, `confidence: "low"`
-- The event is still persisted to `agent_events` with `rca_triggered: true`
-- Dashboard shows the incident even without a complete RCA
-
----
-
-## 8. WHAT NOT TO BUILD
-
-| Feature | Why Skip |
+| Scenario | Expected behavior |
 |---|---|
-| Kubernetes event support | Docker-only for MVP. K8s is a separate integration layer. |
-| Redis for dedup/cooldown | In-memory dicts are fine for single-worker deployment. Add Redis when scaling to multiple workers. |
-| Real-time WebSocket push to frontend | Polling is sufficient. Add SSE/WS when latency matters. |
-| Multi-tenant data isolation (RLS per user) | Service key bypasses RLS already. Add per-user RLS when onboarding external teams. |
-| Custom alert channels (Slack, PagerDuty) | Phone + dashboard is MVP. Slack is Phase 2. |
-| Event replay/backfill | Store events for audit, but don't build replay tooling yet. |
-| Container health check polling from agent | Docker's native healthcheck handles this. Agent just reads the state. |
-| CI/CD pipeline integration (Jenkins, GitLab) | GitHub webhooks only for MVP. |
-| Agent auto-update mechanism | Users manually pull new Docker image for now. |
-| Custom dedup windows per user | Fixed 60s window for all. Configurable later. |
+| Crash loop sends 10 events in 30 seconds | First event routes, later duplicates suppressed |
+| Deployment route and agent route import runtime | Both see the same watch manager state |
+| Two services deploy together | One watch entry per user/service |
+| Backend restarts during watch | Watch recovered from deployments table |
+| Old agent posts logs only | Error logs become `log_error`; healthy logs are ignored |
+| LLM fails | Event is still stored; RCA result records failure |
+| Phone call already sent 3 minutes ago | Cooldown blocks phone only; RCA still runs |
+| Missing webhook signature with secret configured | Request rejected with `401` |
+| Repo cannot map to service | Use heartbeat fallback or lower-confidence repo watch |
+
+## 13. What Not To Build Yet
+
+| Feature | Why skip |
+|---|---|
+| Redis dedup/cooldown | In-memory is fine for single-worker MVP |
+| Kubernetes events | Docker-only MVP |
+| WebSocket/SSE dashboard push | Polling is enough |
+| Slack/PagerDuty | Phone + dashboard first |
+| Event replay tooling | Store events now, replay later |
+| Custom dedup windows | Fixed 60 seconds is enough |
+| Agent auto-update | Manual update for MVP |
+| Jenkins/GitLab integrations | GitHub first |
+
+## 14. Final MVP Slice
+
+Build in this exact order:
+
+1. Strict webhook HMAC fix.
+2. `agent_events` schema.
+3. `event_models.py`.
+4. Minimal `db.create_event()`.
+5. Shared `runtime.py`.
+6. `dedup.py`.
+7. `watch_manager.py`.
+8. `event_engine.py`.
+9. `POST /agent/events`.
+10. Forwarder crash events to `/agent/events`.
+11. Convert old log ingestion to `log_error`.
+12. Add tests.
+13. Split routes.
+14. Refactor repos.
+
+This order keeps the system implementable at every step and avoids the three
+major failure modes: missing persistence, split runtime state, and broken
+deployment-to-service correlation.

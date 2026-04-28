@@ -57,6 +57,7 @@ AGENT_VERSION = "4.0.0"
 HOSTNAME      = socket.gethostname()
 
 INGEST_URL    = f"{BACKEND_URL}/agent/logs/ingest"
+EVENT_URL     = f"{BACKEND_URL}/agent/events"
 HEARTBEAT_URL = f"{BACKEND_URL}/agent/heartbeat"
 
 # ---------------------------------------------------------------------------
@@ -82,21 +83,26 @@ def _headers() -> dict:
 
 def _post(url: str, payload: dict, timeout: int = 8) -> bool:
     """POST JSON to backend. Returns True on success."""
+    return _post_status(url, payload, timeout) == 200
+
+
+def _post_status(url: str, payload: dict, timeout: int = 8) -> int:
+    """POST JSON to backend. Returns HTTP status code, or 0 on network failure."""
     try:
         r = requests.post(url, json=payload, headers=_headers(), timeout=timeout)
         if r.status_code == 200:
-            return True
+            return r.status_code
         logger.warning(f"Backend returned {r.status_code} for {url}: {r.text[:120]}")
-        return False
+        return r.status_code
     except requests.exceptions.Timeout:
         logger.warning(f"Timeout posting to {url}")
-        return False
+        return 0
     except requests.exceptions.ConnectionError:
         logger.warning(f"Connection error posting to {url}")
-        return False
+        return 0
     except Exception as e:
         logger.error(f"Unexpected error posting to {url}: {e}")
-        return False
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +237,7 @@ def poll_logs(docker_client: docker.DockerClient):
 CRASH_EVENTS = {"die", "oom", "kill", "stop"}
 
 
-def watch_events(docker_client: docker.DockerClient):
+def _legacy_watch_events(docker_client: docker.DockerClient):
     """
     Listen to Docker event stream. When a monitored container crashes/OOMs/dies,
     immediately flush its last 100 lines to the backend so RCA can start right away.
@@ -278,6 +284,95 @@ def watch_events(docker_client: docker.DockerClient):
                     logger.error(f"Failed to forward crash logs for {name}")
 
                 # Reset delta pointer so next poll bootstraps fresh
+                _last_seen.pop(cid, None)
+
+        except Exception as e:
+            logger.error(f"Events stream error: {e}. Reconnecting in 5s...")
+            time.sleep(5)
+
+
+def _event_reason(action: str, exit_code: str) -> str:
+    if action == "oom":
+        return "oom"
+    if action == "kill":
+        return "sigkill"
+    if action == "die":
+        return "exit_zero" if str(exit_code) == "0" else "exit_nonzero"
+    if action == "stop":
+        return "stopped"
+    return action or "unknown"
+
+
+def watch_events(docker_client: docker.DockerClient):
+    """
+    Listen to Docker event stream and send structured crash events to the backend.
+    This definition intentionally supersedes the legacy log-only implementation
+    above while keeping the old code nearby during the transition.
+    """
+    logger.info("Docker events stream started (watching for crashes/OOMs...)")
+    while True:
+        try:
+            for event in docker_client.events(
+                decode=True,
+                filters={"type": "container", "label": f"{MONITOR_LABEL}=true"},
+            ):
+                action = event.get("Action", "")
+                if action not in CRASH_EVENTS:
+                    continue
+
+                cid = event.get("id", "")[:12]
+                attrs = event.get("Actor", {}).get("Attributes", {})
+                name = attrs.get("name", cid)
+                exit_code = attrs.get("exitCode", "?")
+
+                logger.warning(f"CRASH DETECTED: {name} | event={action} | exit={exit_code}")
+
+                restart_count = 0
+                image_hash = ""
+                try:
+                    container = docker_client.containers.get(cid)
+                    container.reload()
+                    restart_count = container.attrs.get("RestartCount", 0)
+                    image_hash = container.attrs.get("Image", "")
+                    crash_logs = container.logs(tail=100).decode("utf-8", errors="ignore")
+                except Exception:
+                    crash_logs = f"[opstron] Container {name} exited with code {exit_code}. Could not retrieve logs."
+
+                payload = {
+                    "type": "container_crash",
+                    "source": "agent",
+                    "container_id": cid,
+                    "container_name": name,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "exit_code": exit_code,
+                    "reason": _event_reason(action, exit_code),
+                    "image_hash": image_hash,
+                    "restart_count": restart_count,
+                    "logs": crash_logs,
+                    "metadata": {
+                        "event_action": action,
+                        "hostname": HOSTNAME,
+                    },
+                }
+
+                status = _post_status(EVENT_URL, payload)
+                if status == 200:
+                    logger.info(f"Structured crash event for {name} forwarded to backend")
+                elif status == 404:
+                    logger.warning("Backend does not support /agent/events yet. Falling back to log ingest.")
+                    fallback_payload = {
+                        "container_id": cid,
+                        "container_name": name,
+                        "logs": crash_logs,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                    if _post(INGEST_URL, fallback_payload):
+                        logger.info(f"Crash logs for {name} forwarded to legacy backend")
+                    else:
+                        logger.error(f"Failed to forward crash logs for {name}")
+                else:
+                    logger.error(f"Failed to forward structured crash event for {name}")
+
                 _last_seen.pop(cid, None)
 
         except Exception as e:

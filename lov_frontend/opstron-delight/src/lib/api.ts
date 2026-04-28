@@ -164,6 +164,7 @@ export async function fetchRepos(): Promise<Repo[]> {
 export async function installWebhook(
   owner: string,
   repo: string,
+  serviceName: string,
   webhookUrl?: string,
 ): Promise<{ message: string; webhook_id?: number }> {
   return apiFetch("/integrations/install-webhook", {
@@ -172,6 +173,7 @@ export async function installWebhook(
       owner,
       repo,
       webhook_url: webhookUrl ?? `${BACKEND}/notify-deployment`,
+      service_name: serviceName,
     }),
   });
 }

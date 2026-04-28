@@ -8,8 +8,8 @@ Runs the 4-step Root Cause Analysis pipeline for every error:
   Step 3 — RunbookAgent:    Search the runbook vector store for matching docs.
   Step 4 — SynthesizerAgent: Combine all signals into a structured RCA report (via LLM).
 
-After synthesis, if the report flags a deployment regression, a voice alert is
-fired in the background via Twilio (non-blocking).
+After synthesis, alert routing is handled by EventEngine so phone calls are
+deduped and cooldown-controlled in one place.
 
 Usage:
     orchestrator = RCAOrchestrator()
@@ -17,14 +17,12 @@ Usage:
 """
 
 import logging
-import asyncio
 from typing import Dict, Any, Optional
 
 from app.core.agents.log_agent import LogAgent
 from app.core.agents.commit_agent import CommitAgent
 from app.core.agents.runbook_agent import RunbookAgent
 from app.core.agents.synthesizer_agent import SynthesizerAgent
-from app.services.twilio_service import TwilioService
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +33,6 @@ class RCAOrchestrator:
         self.commit_agent = CommitAgent()
         self.runbook_agent = RunbookAgent()
         self.synthesizer_agent = SynthesizerAgent()
-        self.twilio_service = TwilioService()
 
     async def analyze(
         self,
@@ -99,25 +96,4 @@ class RCAOrchestrator:
 
         logger.info("RCA pipeline completed")
 
-        # Fire a voice alert in the background for confirmed deployment regressions
-        if rca_report.get("is_deployment_caused") or rca_report.get("is_deployment_regression"):
-            logger.warning(f"Deployment regression confirmed in {service}. Triggering voice alert.")
-            suspect_sha = rca_report.get("suspect_commit", {}).get("sha", "unknown")
-            root_cause = rca_report.get("root_cause", "an unknown error")
-            alert_message = (
-                f"Hello. This is an OpsTron emergency alert. "
-                f"A critical error has been detected in the {service} service "
-                f"immediately following commit {suspect_sha}. "
-                f"The AI analysis indicates the root cause is: {root_cause}. "
-                f"Please check your dashboard immediately."
-            )
-            asyncio.create_task(self._trigger_voice_alert(alert_message))
-
         return rca_report
-
-    async def _trigger_voice_alert(self, message: str):
-        """Fire a Twilio voice call in the background (non-blocking)."""
-        try:
-            await asyncio.to_thread(self.twilio_service.send_voice_alert, message)
-        except Exception as e:
-            logger.error(f"Background voice alert failed: {e}")

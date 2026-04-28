@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api.middleware.auth import GitHubAuth
+from app.db.supabase_client import db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/integrations")
@@ -33,6 +34,7 @@ class InstallWebhookRequest(BaseModel):
     owner: str          # GitHub username or org owning the repo
     repo: str           # Repository name (without owner prefix)
     webhook_url: str    # The URL GitHub will POST to on push events
+    service_name: str = ""  # Main service/container name for MVP correlation
 
 
 class RemoveWebhookRequest(BaseModel):
@@ -142,6 +144,12 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
         for hook in existing.json():
             if hook.get("config", {}).get("url") == body.webhook_url:
                 logger.info(f"Webhook already exists on {body.owner}/{body.repo} (id={hook['id']})")
+                await db.upsert_repo(
+                    github_id=session["github_id"],
+                    repo_full_name=f"{body.owner}/{body.repo}",
+                    webhook_id=str(hook["id"]),
+                    service_name=body.service_name.strip() or body.repo,
+                )
                 return {
                     "status": "already_exists",
                     "hook_id": hook["id"],
@@ -194,6 +202,12 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
 
     hook = response.json()
     logger.info(f"Webhook installed on {body.owner}/{body.repo}, id={hook['id']}")
+    await db.upsert_repo(
+        github_id=session["github_id"],
+        repo_full_name=f"{body.owner}/{body.repo}",
+        webhook_id=str(hook["id"]),
+        service_name=body.service_name.strip() or body.repo,
+    )
 
     return {
         "status": "created",

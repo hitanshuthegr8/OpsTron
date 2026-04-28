@@ -15,17 +15,17 @@ import uuid
 from datetime import datetime, timedelta
 
 from app.models.error_models import ErrorPayload, IngestResponse, DeploymentPayload, DeploymentResponse, AgentLogPayload, AgentLogResponse
-from app.core.orchestrator import RCAOrchestrator
+from app.models.event_models import AgentEventPayload, AgentEventResponse
 from app.core.config.settings import settings
+from app.core.runtime import event_engine, orchestrator, watch_manager
 from app.utils.github_api import GitHubClient
 from app.api.middleware.auth import GitHubWebhookAuth, AgentKeyAuth, GitHubAuth, verify_api_key
 from app.db.supabase_client import db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+ERROR_SIGNALS = ("error", "exception", "traceback", "fatal", "panic", "segmentation fault")
 
-# Orchestrator instance
-orchestrator = RCAOrchestrator()
 github_client = GitHubClient()
 
 # In-memory storage for RCA reports (for dashboard display)
@@ -436,27 +436,87 @@ async def notify_deployment(request: Request):
         branch=branch
     )
     
-    # Register the deployment
+    repo_connections = await db.get_repo_connections(parsed_payload.repository)
+    if not repo_connections:
+        repo_connections = [{"github_id": "legacy", "service_name": repo_full_name.split("/")[-1]}]
+
+    services_watched: List[str] = []
+    first_deployment_id = ""
+
+    for connection in repo_connections:
+        github_id = connection.get("github_id", "legacy")
+        service_name = await _resolve_service_for_deployment(
+            github_id, parsed_payload.repository, connection
+        )
+        services_watched.append(service_name)
+
+        created_deployment = await db.create_deployment({
+            "github_id":    github_id if github_id != "legacy" else None,
+            "commit_sha":   parsed_payload.commit_sha,
+            "repository":   parsed_payload.repository,
+            "author":       parsed_payload.author,
+            "branch":       parsed_payload.branch,
+            "message":      parsed_payload.message,
+            "status":       "watching",
+            "service_name":  service_name,
+            "services_watched": [service_name],
+        })
+        deployment_record_id = str((created_deployment or {}).get("id", ""))
+        first_deployment_id = first_deployment_id or deployment_record_id
+
+        watch_manager.start_watch(
+            github_id=github_id,
+            service_name=service_name,
+            commit_sha=parsed_payload.commit_sha,
+            repository=parsed_payload.repository,
+            author=parsed_payload.author,
+            branch=parsed_payload.branch,
+            source="webhook",
+            deployment_id=deployment_record_id,
+        )
+
+    services_watched = sorted(set(services_watched))
+
+    deployment_event = AgentEventPayload(
+        type="deployment_detected",
+        source="webhook",
+        service_name=services_watched[0] if services_watched else parsed_payload.repository.split("/")[-1],
+        timestamp=datetime.utcnow().isoformat(),
+        metadata={
+            "repository": parsed_payload.repository,
+            "commit_sha": parsed_payload.commit_sha,
+            "branch": parsed_payload.branch,
+            "services_watched": services_watched,
+        },
+    )
+    await event_engine.process(deployment_event, user_id=repo_connections[0].get("github_id", "legacy"))
+
+    # Keep the old watcher warm while /ingest-error is still legacy code.
     deployment_id = deployment_watcher.register_deployment(parsed_payload)
     active = await deployment_watcher.get_active_deployment()
 
-    # Persist deployment to Supabase
-    await db.create_deployment({
-        "commit_sha": parsed_payload.commit_sha,
-        "repository": parsed_payload.repository,
-        "author":     parsed_payload.author,
-        "branch":     parsed_payload.branch,
-        "message":    parsed_payload.message,
-        "status":     "watching",
-    })
-
     return DeploymentResponse(
         status="watching",
-        deployment_id=deployment_id,
+        deployment_id=first_deployment_id or deployment_id,
         commit_sha=parsed_payload.commit_sha,
         watch_until=active["watch_until"] if active else "",
-        message=f"OpsTron is now watching for errors related to commit {parsed_payload.commit_sha[:7]}. Watch mode active for 5 minutes."
+        message=f"OpsTron is watching {len(services_watched)} service(s) for commit {parsed_payload.commit_sha[:7]}: {', '.join(services_watched) or 'repo-level watch'}.",
+        services_watched=services_watched,
     )
+
+
+async def _resolve_service_for_deployment(github_id: str, repository: str, connection: Dict[str, Any]) -> str:
+    service_name = str(connection.get("service_name") or "").strip()
+    if service_name:
+        return service_name
+
+    heartbeat = await db.get_heartbeat(github_id)
+    monitored = (heartbeat or {}).get("monitored_containers") or []
+    monitored = [str(service).strip() for service in monitored if str(service).strip()]
+    if monitored:
+        return monitored[0]
+
+    return repository.split("/")[-1]
 
 
 @router.get("/deployment-status")
@@ -530,6 +590,13 @@ async def get_rca_history(limit: int = 20, _user: dict = GitHubAuth):
 # Inbound Docker Agent Log Receiver
 # =============================================================================
 
+@router.post("/agent/events", response_model=AgentEventResponse)
+async def ingest_agent_event(payload: AgentEventPayload, agent_identity: dict = AgentKeyAuth):
+    """Structured event endpoint for the OpsTron Docker agent."""
+    result = await event_engine.process(payload, user_id=agent_identity["user_id"])
+    return AgentEventResponse(**result.model_dump())
+
+
 @router.post("/agent/logs/ingest", response_model=AgentLogResponse)
 async def ingest_agent_logs(payload: AgentLogPayload, _agent: dict = AgentKeyAuth):
     """
@@ -542,38 +609,32 @@ async def ingest_agent_logs(payload: AgentLogPayload, _agent: dict = AgentKeyAut
     
     logger.info(f"[DOCKER_AGENT] Received block from {payload.container_name} ({payload.container_id[:8]})")
     
-    # Check if we should feed this into RCA
-    # If the user is in an active deployment watch, we check logs for errors
-    active_deployment = await deployment_watcher.get_active_deployment()
-    
-    if active_deployment:
-        logger.info(f"[DOCKER_AGENT] Active deployment watch found. Analyzing {payload.container_name} logs.")
-        
-        # Simple pre-filter: only process if there's actually an error keyword
-        # In a real system, you'd use a more sophisticated heuristic or let the LLM decide
-        if "error" in payload.logs.lower() or "exception" in payload.logs.lower() or "traceback" in payload.logs.lower():
-            logger.warning(f"[DOCKER_AGENT] Potential error found in logs for {payload.container_name}. Triggering RCA.")
-            
-            simulated_payload = ErrorPayload(
-                service=payload.container_name,
-                error=f"Uncaught issue detected in deployment watch for {payload.container_name}",
-                stacktrace="",
-                recent_logs=payload.logs.splitlines(),
-                env="production"
-            )
-            
-            try:
-                # Await directly so we can catch exceptions if the pipeline fails
-                result = await ingest_error(simulated_payload)
-                logger.info(f"[DOCKER_AGENT] RCA Pipeline completed with status: {result.status}")
-            except Exception as e:
-                logger.error(f"[DOCKER_AGENT] Failed to trigger RCA pipeline: {e}")
-        else:
-            logger.debug(f"[DOCKER_AGENT] Logs from {payload.container_name} appear healthy. Skipping RCA.")
+    if _contains_error_signal(payload.logs):
+        logger.warning(f"[DOCKER_AGENT] Error signal found in logs for {payload.container_name}. Sending log_error event.")
+        event_payload = AgentEventPayload(
+            type="log_error",
+            source="agent",
+            container_id=payload.container_id,
+            container_name=payload.container_name,
+            service_name=payload.container_name,
+            timestamp=datetime.utcnow().isoformat(),
+            logs=payload.logs,
+            reason="log_error",
+            metadata={"ingestion_mode": "legacy_log_ingest"},
+        )
+        result = await event_engine.process(event_payload, user_id=_agent["user_id"])
+        logger.info(f"[DOCKER_AGENT] EventEngine completed with status: {result.status}")
+    else:
+        logger.debug(f"[DOCKER_AGENT] Logs from {payload.container_name} appear healthy. Skipping RCA.")
 
     processing_time = (time.time() - start_time) * 1000
 
     return AgentLogResponse(status="received", message=f"Processed chunk for {payload.container_id}")
+
+
+def _contains_error_signal(logs: str) -> bool:
+    lowered = (logs or "").lower()
+    return any(signal in lowered for signal in ERROR_SIGNALS)
 
 
 # =============================================================================

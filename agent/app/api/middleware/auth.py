@@ -207,8 +207,8 @@ async def verify_github_webhook_hmac(request: Request) -> bool:
 
     signature_header = request.headers.get("x-hub-signature-256")
     if not signature_header:
-        logger.warning("Missing X-Hub-Signature-256 header. Permitting for local testing.")
-        return True
+        logger.warning("Missing X-Hub-Signature-256 header. Rejecting webhook.")
+        raise HTTPException(status_code=401, detail="Missing webhook signature")
 
     # Read raw payload bytes
     payload = await request.body()

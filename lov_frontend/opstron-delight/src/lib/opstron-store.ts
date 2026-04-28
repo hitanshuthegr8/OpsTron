@@ -27,6 +27,7 @@ export interface OnboardingData {
   repo: string;
   connectedRepoOwner: string;
   connectedRepoName: string;
+  serviceName: string;
   voiceAlerts: boolean;
   phone: string;
   threshold: Severity;
@@ -62,6 +63,7 @@ const defaultOnboarding: OnboardingData = {
   repo: "",
   connectedRepoOwner: "",
   connectedRepoName: "",
+  serviceName: "",
   voiceAlerts: true,
   phone: "",
   threshold: "high",

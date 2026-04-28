@@ -8,14 +8,10 @@ Maintained for backward compatibility with MVP2 workflow.
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 import logging
 
-from app.core.orchestrator import RCAOrchestrator
+from app.core.runtime import orchestrator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# Orchestrator instance
-orchestrator = RCAOrchestrator()
-
 
 @router.post("/analyze")
 async def analyze_logs(

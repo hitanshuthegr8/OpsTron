@@ -69,6 +69,7 @@ function OnboardingPage() {
     repo: "",
     connectedRepoOwner: "",
     connectedRepoName: "",
+    serviceName: "",
     voiceAlerts: true,
     phone: "",
     threshold: "high",
@@ -99,6 +100,7 @@ function OnboardingPage() {
   const validate = (s: number) => {
     const e: Record<string, string> = {};
     if (s === 1 && !data.connectedRepoOwner) e.repo = "Please select and connect a repository first.";
+    if (s === 1 && !data.serviceName.trim()) e.serviceName = "Enter the main Docker service/container name.";
     if (s === 3) {
       if (data.voiceAlerts && !/^\+?[\d\s\-()]{7,}$/.test(data.phone)) {
         e.phone = "Enter a valid phone number (e.g. +1 555 010 1234)";
@@ -167,7 +169,7 @@ function OnboardingPage() {
             <StepRepo data={data} set={set} errors={errors} apiKey={state.user.agentApiKey} />
           )}
           {step === 2 && (
-            <StepDocker apiKey={state.user.agentApiKey} />
+            <StepDocker apiKey={state.user.agentApiKey} serviceName={data.serviceName} />
           )}
           {step === 3 && (
             <StepAlerts data={data} set={set} errors={errors} />
@@ -238,7 +240,7 @@ function StepRepo({
     if (!selected) return;
     setConnecting(true);
     try {
-      await installWebhook(selected.owner, selected.name, webhookUrl || undefined);
+      await installWebhook(selected.owner, selected.name, data.serviceName.trim(), webhookUrl || undefined);
       set("repo", selected.full_name);
       set("connectedRepoOwner", selected.owner);
       set("connectedRepoName", selected.name);
@@ -285,7 +287,11 @@ function StepRepo({
           {!loading && filtered.map((r) => (
             <button
               key={r.id}
-              onClick={() => { setSelected(r); setConnected(false); }}
+              onClick={() => {
+                setSelected(r);
+                setConnected(false);
+                if (!data.serviceName) set("serviceName", r.name);
+              }}
               className={cn(
                 "flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-accent/30",
                 selected?.id === r.id && "bg-primary/10",
@@ -321,6 +327,20 @@ function StepRepo({
         </Button>
       </div>
 
+      <Field label="Main service name" error={errors.serviceName}>
+        <Input
+          value={data.serviceName}
+          onChange={(e) => {
+            set("serviceName", e.target.value);
+            setConnected(false);
+          }}
+          placeholder="checkout-api"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Use the Docker Compose service name or container name your agent will monitor.
+        </p>
+      </Field>
+
       {/* Optional webhook URL override */}
       <div className="space-y-1.5">
         <Label className="text-sm">Backend public URL <span className="text-muted-foreground">(optional)</span></Label>
@@ -336,7 +356,7 @@ function StepRepo({
 
       {/* Connect button */}
       {selected && !connected && (
-        <Button onClick={handleConnect} disabled={connecting} className="w-full">
+        <Button onClick={handleConnect} disabled={connecting || !data.serviceName.trim()} className="w-full">
           {connecting ? (
             <span className="size-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
           ) : (
@@ -357,12 +377,13 @@ function StepRepo({
       )}
 
       {errors.repo && <p className="text-xs text-destructive">{errors.repo}</p>}
+      {errors.serviceName && <p className="text-xs text-destructive">{errors.serviceName}</p>}
     </div>
   );
 }
 
 // ─── Step 2: Docker Agent Setup ───────────────────────────────────────────────
-function StepDocker({ apiKey }: { apiKey: string }) {
+function StepDocker({ apiKey, serviceName }: { apiKey: string; serviceName: string }) {
   const [copiedCompose, setCopiedCompose] = useState(false);
   const [copiedRun, setCopiedRun] = useState(false);
   const [agentStatus, setAgentStatus] = useState<"waiting" | "connected">("waiting");
@@ -381,6 +402,7 @@ function StepDocker({ apiKey }: { apiKey: string }) {
     return () => clearInterval(timer);
   }, [apiKey]);
 
+  const watchedService = serviceName || "your-app";
   const composeSnippet = `  opstron-agent:
     image: opstron/agent:latest
     restart: unless-stopped
@@ -390,9 +412,8 @@ function StepDocker({ apiKey }: { apiKey: string }) {
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  # Label any container you want OpsTron to watch:
-  your-app:
-    image: your-app:latest
+  ${watchedService}:
+    image: ${watchedService}:latest
     labels:
       opstron.monitor: "true"`;
 
@@ -461,7 +482,7 @@ function StepDocker({ apiKey }: { apiKey: string }) {
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Then opt containers in: <code className="rounded bg-muted px-1 py-0.5">docker run --label opstron.monitor=true your-app</code>
+          Then opt your main service in: <code className="rounded bg-muted px-1 py-0.5">docker run --label opstron.monitor=true {watchedService}</code>
         </p>
       </div>
 

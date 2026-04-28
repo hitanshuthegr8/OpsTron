@@ -127,6 +127,15 @@ class Database:
         
         result = self.client.table("rca_logs").select("*").eq("deployment_id", deployment_id).execute()
         return result.data or []
+
+    async def create_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a structured agent event record."""
+        if not self.client:
+            logger.warning("Supabase not configured - skipping event DB write")
+            return {"id": "mock-id", **data}
+
+        result = self.client.table("agent_events").insert(data).execute()
+        return result.data[0] if result.data else None
     
     # =========================================================================
     # Commits
@@ -291,6 +300,7 @@ class Database:
         github_id: str,
         repo_full_name: str,
         webhook_id: Optional[str] = None,
+        service_name: Optional[str] = None,
     ) -> bool:
         """Record that a user has connected a repo in the onboarding flow."""
         if not self.client:
@@ -305,6 +315,8 @@ class Database:
                 "webhook_id":     webhook_id,
                 "webhook_active": True,
             }
+            if service_name is not None:
+                data["service_name"] = service_name
             self.client.table("connected_repos").upsert(
                 data, on_conflict="github_id,repo_full_name"
             ).execute()
@@ -313,6 +325,23 @@ class Database:
         except Exception as e:
             logger.error(f"[DB] upsert_repo failed: {e}")
             return False
+
+    async def get_repo_connections(self, repo_full_name: str) -> List[Dict[str, Any]]:
+        """Return users who connected a repository."""
+        if not self.client:
+            return []
+        try:
+            result = (
+                self.client.table("connected_repos")
+                .select("*")
+                .eq("repo_full_name", repo_full_name)
+                .eq("webhook_active", True)
+                .execute()
+            )
+            return result.data or []
+        except Exception as e:
+            logger.debug(f"[DB] get_repo_connections miss for {repo_full_name}: {e}")
+            return []
 
     # =========================================================================
     # User Helpers
@@ -400,7 +429,11 @@ class Database:
     # Active Deployment (crash-safe read-back)
     # =========================================================================
 
-    async def get_active_deployment_db(self) -> Optional[Dict[str, Any]]:
+    async def get_active_deployment_db(
+        self,
+        github_id: Optional[str] = None,
+        service_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
         Query Supabase for the most recent deployment still within the 5-min
         watch window. Used as a fallback when active_deployments RAM dict is
@@ -418,11 +451,19 @@ class Database:
                 .select("*")
                 .eq("status", "watching")
                 .gte("created_at", cutoff)
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
             )
-            return result.data[0] if result.data else None
+            if github_id:
+                result = result.eq("github_id", github_id)
+            result = result.order("created_at", desc=True).limit(5).execute()
+            rows = result.data or []
+            if service_name:
+                for row in rows:
+                    watched_service = row.get("service_name")
+                    services = row.get("services_watched") or row.get("metadata", {}).get("services_watched") or []
+                    if watched_service == service_name or not services or service_name in services:
+                        return row
+                return None
+            return rows[0] if rows else None
         except Exception as e:
             logger.debug(f"[DB] get_active_deployment_db miss: {e}")
             return None
