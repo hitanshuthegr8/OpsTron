@@ -1,7 +1,7 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { initFromOAuthCallback, refreshSession, useAppState, useHydrated } from "@/lib/opstron-store";
-import { TOKEN_KEY, appPath } from "@/lib/api";
+import { refreshSession, useHydrated } from "@/lib/opstron-store";
+import { TOKEN_KEY } from "@/lib/api";
 
 import appCss from "../styles.css?url";
 
@@ -61,8 +61,8 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Root component: captures ?token= from URL after GitHub OAuth redirect,
- * then silently refreshes the session on every page load.
+ * Root component silently refreshes a previously stored session token.
+ * OAuth bootstrap is handled on the /login route to avoid route-init races.
  */
 function RootComponent() {
   const hydrated = useHydrated();
@@ -70,29 +70,7 @@ function RootComponent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // 1. Capture token from URL if redirected from OAuth callback
-    const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get("token");
-    if (urlToken) {
-      // Strip the token from the URL immediately
-      params.delete("token");
-      const newSearch = params.toString();
-      const newUrl =
-        window.location.pathname + (newSearch ? `?${newSearch}` : "") + window.location.hash;
-      window.history.replaceState({}, document.title, newUrl);
-
-      // Bootstrap the session from this fresh token
-      initFromOAuthCallback(urlToken).then((ok) => {
-        if (ok) {
-          window.location.href = appPath("/onboarding");
-        } else {
-          window.location.href = appPath("/login");
-        }
-      });
-      return;
-    }
-
-    // 2. On every normal load: silently refresh session if a token exists
+    // On every normal load: silently refresh session if a token exists.
     const existingToken = localStorage.getItem(TOKEN_KEY);
     if (existingToken && hydrated) {
       refreshSession();
