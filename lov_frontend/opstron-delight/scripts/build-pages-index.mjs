@@ -4,6 +4,48 @@ import path from "node:path";
 const projectRoot = process.cwd();
 const clientDir = path.join(projectRoot, "dist", "client");
 const assetsDir = path.join(clientDir, "assets");
+const prerenderedShellPath = path.join(clientDir, "_shell", "index.html");
+const rootIndexPath = path.join(clientDir, "index.html");
+const loginIndexPath = path.join(clientDir, "login", "index.html");
+const notFoundPath = path.join(clientDir, "404.html");
+
+async function fileExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function preservePrerenderedPages() {
+  const hasRootIndex = await fileExists(rootIndexPath);
+  const hasLoginIndex = await fileExists(loginIndexPath);
+
+  if (!hasRootIndex || !hasLoginIndex) {
+    return false;
+  }
+
+  if (!(await fileExists(notFoundPath))) {
+    const html = await fs.readFile(rootIndexPath, "utf8");
+    await fs.writeFile(notFoundPath, html, "utf8");
+  }
+
+  console.log("GitHub Pages prerendered routes detected; preserving generated HTML.");
+  return true;
+}
+
+async function writePrerenderedShell() {
+  try {
+    const html = await fs.readFile(prerenderedShellPath, "utf8");
+    await fs.writeFile(rootIndexPath, html, "utf8");
+    await fs.writeFile(notFoundPath, html, "utf8");
+    console.log(`GitHub Pages shell copied from ${prerenderedShellPath}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function findBootstrapEntry() {
   const entries = await fs.readdir(assetsDir, { withFileTypes: true });
@@ -58,12 +100,13 @@ async function writePagesShell(jsFile, cssFile) {
 </html>
 `;
 
-  await fs.writeFile(path.join(clientDir, "index.html"), html, "utf8");
-  await fs.writeFile(path.join(clientDir, "404.html"), html, "utf8");
+  await fs.writeFile(rootIndexPath, html, "utf8");
+  await fs.writeFile(notFoundPath, html, "utf8");
 }
 
-const jsFile = await findBootstrapEntry();
-const cssFile = await findStylesheet();
-await writePagesShell(jsFile, cssFile);
-
-console.log(`GitHub Pages shell created with JS=${jsFile} CSS=${cssFile}`);
+if (!(await preservePrerenderedPages()) && !(await writePrerenderedShell())) {
+  const jsFile = await findBootstrapEntry();
+  const cssFile = await findStylesheet();
+  await writePagesShell(jsFile, cssFile);
+  console.log(`GitHub Pages shell created with JS=${jsFile} CSS=${cssFile}`);
+}

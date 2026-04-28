@@ -1,6 +1,8 @@
 import { createRouter, useRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 
+const ROUTER_BASEPATH = import.meta.env.PROD ? "/OpsTron" : "/";
+
 function DefaultErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
 
@@ -58,7 +60,7 @@ export const getRouter = () => {
   const router = createRouter({
     routeTree,
     context: {},
-    basepath: import.meta.env.BASE_URL,
+    basepath: ROUTER_BASEPATH,
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
     defaultErrorComponent: DefaultErrorComponent,

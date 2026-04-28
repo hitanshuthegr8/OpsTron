@@ -4,16 +4,15 @@
  */
 
 export const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://opstron.onrender.com";
+const APP_BASE = import.meta.env.PROD ? "/OpsTron" : "";
 
 // ─── Auth token helpers ────────────────────────────────────────────────────
 export const TOKEN_KEY = "ops_token";
 export const AGENT_KEY = "ops_agent_key";
 
 export function appPath(path: string): string {
-  const base = import.meta.env.BASE_URL || "/";
-  const cleanBase = base.endsWith("/") ? base.slice(0, -1) : base;
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${cleanBase}${cleanPath}`;
+  return `${APP_BASE}${cleanPath}`;
 }
 
 export function getToken(): string {

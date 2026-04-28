@@ -9,6 +9,15 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 const isProd = process.env.NODE_ENV === "production";
 
 export default defineConfig({
+  cloudflare: false,
+  tanstackStart: {
+    router: {
+      basepath: "/OpsTron",
+    },
+    prerender: {
+      enabled: true,
+    },
+  },
   vite: {
     base: isProd ? "/OpsTron/" : "/",
   },
