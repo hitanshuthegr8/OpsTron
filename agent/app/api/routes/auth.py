@@ -137,10 +137,11 @@ async def github_callback(code: str):
     await db.upsert_user(github_user, access_token, agent_api_key)
     await db.save_session_token(session_token, github_id)
 
-    # Redirect to frontend root with token; client router handles onboarding.
-    # This avoids hardcoding route paths (and works better for static hosts).
+    # Redirect to the frontend login route with token bootstrap.
+    # This is more reliable on static hosts than depending on the root route
+    # to finish auth before other redirects run.
     frontend_base = settings.FRONTEND_URL.rstrip("/")
-    frontend_url = f"{frontend_base}/?token={session_token}"
+    frontend_url = f"{frontend_base}/login?token={session_token}"
     return RedirectResponse(url=frontend_url)
 
 

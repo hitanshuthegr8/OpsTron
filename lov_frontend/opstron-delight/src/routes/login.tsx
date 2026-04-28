@@ -2,8 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Github, Activity, ShieldCheck, Zap, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { redirectToGitHubOAuth } from "@/lib/api";
-import { useAppState, useHydrated } from "@/lib/opstron-store";
+import { appPath, redirectToGitHubOAuth } from "@/lib/api";
+import { initFromOAuthCallback, useAppState, useHydrated } from "@/lib/opstron-store";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -21,6 +21,7 @@ function LoginPage() {
   const hydrated = useHydrated();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [bootstrapping, setBootstrapping] = useState(false);
 
   // If already logged in, redirect away
   useEffect(() => {
@@ -29,11 +30,36 @@ function LoginPage() {
     }
   }, [hydrated, state.user, state.setupComplete, navigate]);
 
-  // Show error if GitHub OAuth returned an error param
+  // Handle OAuth completion or error params on the login route itself.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
     const err = params.get("error");
+
+    if (token) {
+      setBootstrapping(true);
+      setError("");
+      params.delete("token");
+      const newSearch = params.toString();
+      const newUrl =
+        window.location.pathname + (newSearch ? `?${newSearch}` : "") + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+
+      initFromOAuthCallback(token).then((ok) => {
+        if (ok) {
+          window.location.replace(appPath("/onboarding"));
+        } else {
+          setBootstrapping(false);
+          setError("Authentication succeeded, but the app could not restore your session.");
+        }
+      }).catch(() => {
+        setBootstrapping(false);
+        setError("Authentication succeeded, but the app could not finish sign-in.");
+      });
+      return;
+    }
+
     if (err) {
       setError(
         err === "access_denied"
@@ -121,8 +147,15 @@ function LoginPage() {
               ) : (
                 <Github className="size-5" />
               )}
-              {loading ? "Redirecting to GitHub…" : "Continue with GitHub"}
+              {loading ? "Redirecting to GitHub..." : "Continue with GitHub"}
             </Button>
+
+            {bootstrapping && (
+              <div className="mt-4 flex items-center gap-3 rounded-lg border border-border bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                <span className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                Finishing sign-in...
+              </div>
+            )}
 
             <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
               <div className="h-px flex-1 bg-border" />
