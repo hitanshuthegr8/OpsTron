@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'lov_frontend/opstron-delight/**'
-      - '.github/workflows/deploy-frontend.yml'
-  workflow_dispatch:   # allow manual trigger
+      - "lov_frontend/opstron-delight/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -36,24 +36,7 @@ jobs:
       - name: Create GitHub Pages index fallback
         run: |
           cd lov_frontend/opstron-delight
-          JS_FILE=$(basename "$(ls dist/client/assets/index-*.js | head -n 1)")
-          CSS_FILE=$(basename "$(ls dist/client/assets/styles-*.css | head -n 1)")
-          cat > dist/client/index.html <<EOF
-          <!doctype html>
-          <html lang="en" class="dark">
-            <head>
-              <meta charset="utf-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1" />
-              <title>OpsTron — Autonomous Incident Response</title>
-              <meta name="description" content="AI-powered root cause analysis for production incidents." />
-              <link rel="stylesheet" href="/OpsTron/assets/${CSS_FILE}" />
-            </head>
-            <body class="min-h-screen bg-background text-foreground antialiased">
-              <script type="module" src="/OpsTron/assets/${JS_FILE}"></script>
-            </body>
-          </html>
-          EOF
-          cp dist/client/index.html dist/client/404.html
+          node scripts/build-pages-index.mjs
 
       - name: Deploy lov_frontend to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
