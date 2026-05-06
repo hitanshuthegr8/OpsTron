@@ -1,6 +1,6 @@
 """
 Frontend Development Server
-Simple HTTP server to serve the OpsTron dashboard.
+Simple HTTP server to serve the OpsTronic dashboard.
 """
 
 import http.server
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     with socketserver.TCPServer(("", PORT), Handler) as httpd:
         print(f"""
 ================================================================
-                    OpsTron Dashboard                          
+                    OpsTronic Dashboard
 ================================================================
   Frontend:  http://localhost:{PORT}                         
   Agent:     http://localhost:8001                         

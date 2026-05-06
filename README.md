@@ -19,7 +19,7 @@ An intelligent DevOps assistant that automatically analyzes runtime errors and p
 ## Project Structure
 
 ```
-opstron/
+opstronic/
 ├── agent/                      # RCA Agent Service (Port 8001)
 │   ├── api/                    # API Layer
 │   │   ├── __init__.py         # Router aggregation
@@ -90,8 +90,8 @@ opstron/
 ### 1. Clone and Setup
 
 ```bash
-git clone https://github.com/yourusername/opstron.git
-cd opstron
+git clone https://github.com/Himanhuthegr8/OpsTronic.git
+cd OpsTronic
 ```
 
 ### 2. Start the Agent (Terminal 1)
@@ -167,7 +167,7 @@ CHROMA_PERSIST_DIR=./db/chroma_store
 
 ### LLM Backend
 
-OpsTron supports two LLM backends:
+OpsTronic supports two LLM backends:
 
 | Backend | Pros | Cons |
 |---------|------|------|

@@ -1,5 +1,5 @@
 """
-OpsTron Agent - Main Application Entry Point
+OpsTronic Agent - Main Application Entry Point
 
 This is the AI-powered Root Cause Analysis (RCA) agent that automatically
 analyzes runtime errors and provides actionable insights.
@@ -11,7 +11,7 @@ Features:
 - Runbook matching
 - AI-powered synthesis
 
-Author: OpsTron Team
+Author: OpsTronic Team
 Version: 3.0.0
 """
 
@@ -44,11 +44,11 @@ def create_app() -> FastAPI:
     """
     
     app = FastAPI(
-        title="OpsTron RCA Agent",
+        title="OpsTronic RCA Agent",
         description="""
         ## AI-Powered Root Cause Analysis System
         
-        OpsTron automatically analyzes runtime errors and provides actionable insights.
+        OpsTronic automatically analyzes runtime errors and provides actionable insights.
         
         ### Features
         - **Automated Error Ingestion**: Backend services POST errors to `/ingest-error`
@@ -97,7 +97,7 @@ def _register_events(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
         logger.info("=" * 60)
-        logger.info("OpsTron RCA Agent Starting...")
+        logger.info("OpsTronic RCA Agent Starting...")
         logger.info("=" * 60)
         logger.info(f"Version: 3.0.0")
         logger.info(f"Docs: http://localhost:8001/docs")
@@ -105,7 +105,7 @@ def _register_events(app: FastAPI):
     
     @app.on_event("shutdown")
     async def shutdown_event():
-        logger.info("OpsTron RCA Agent Shutting Down...")
+        logger.info("OpsTronic RCA Agent Shutting Down...")
 
 
 # Create application instance

@@ -38,7 +38,7 @@ async def health_check():
 async def root():
     """Root endpoint - redirects to health check info."""
     return {
-        "service": "OpsTron RCA Agent",
+        "service": "OpsTronic RCA Agent",
         "version": "3.0.0",
         "docs": "/docs",
         "health": "/health"

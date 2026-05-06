@@ -1,5 +1,5 @@
 """
-OpsTron Agent - API Routes Package
+OpsTronic Agent - API Routes Package
 
 This package contains all API route handlers organized by feature.
 """

@@ -1,5 +1,5 @@
 /**
- * OpsTron Dashboard - JavaScript Application
+ * OpsTronic Dashboard - JavaScript Application
  * Handles GitHub integration, API calls, and UI interactions
  */
 
@@ -263,7 +263,7 @@ async function fetchCommits() {
                     Please use: <code style="background: rgba(99,102,241,0.2); padding: 4px 8px; border-radius: 4px;">owner/repo</code>
                 </p>
                 <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
-                    Examples: microsoft/vscode, hitanshuthegr8/OpsTron
+                    Examples: microsoft/vscode, Himanhuthegr8/OpsTronic
                 </p>
             </div>
         `;
@@ -435,7 +435,7 @@ function escapeHtml(text) {
 // Initialization
 // ===========================================
 async function init() {
-    console.log('🚀 OpsTron Dashboard initializing...');
+    console.log('🚀 OpsTronic Dashboard initializing...');
 
     // Initialize components
     initNavigation();
@@ -463,7 +463,7 @@ async function init() {
     // Render any existing reports
     renderRCAReports();
 
-    console.log('✅ OpsTron Dashboard ready!');
+    console.log('✅ OpsTronic Dashboard ready!');
 }
 
 // Start the application
