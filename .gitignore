@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -62,10 +62,3 @@ htmlcov/
 *.pid
 *.seed
 *.pid.lock
-
-# Sample Project (separate repo)
-projects/sample/
-
-# Keep React frontend source lib directory tracked
-!lov_frontend/OpsTronicic-delight/src/lib/
-!lov_frontend/OpsTronicic-delight/src/lib/**
