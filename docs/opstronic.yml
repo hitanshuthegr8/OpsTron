@@ -1,0 +1,32 @@
+name: OpsTronic Notify
+# This workflow notifies OpsTronic every time you push code.
+# OpsTronic will enter "Watch Mode" and monitor your Docker containers
+# for any errors that appear after the deployment.
+
+on: [push]
+
+jobs:
+  notify-opstronic:
+    runs-on: ubuntu-latest
+    name: Notify OpsTronic of Deployment
+
+    steps:
+      - name: 📡 Trigger OpsTronic Watch Mode
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ secrets.OPSTRONIC_BACKEND_URL }}
+          method: 'POST'
+          customHeaders: |
+            {
+              "Content-Type": "application/json",
+              "x-hub-signature-256": "sha256=${{ secrets.OPSTRONIC_WEBHOOK_SECRET }}"
+            }
+          data: |
+            {
+              "event": "push",
+              "repository": "${{ github.repository }}",
+              "sha": "${{ github.sha }}",
+              "ref": "${{ github.ref }}",
+              "pusher": "${{ github.actor }}",
+              "commit_message": "${{ github.event.head_commit.message }}"
+            }

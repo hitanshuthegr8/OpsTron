@@ -1,0 +1,54 @@
+﻿python : Traceback (most recent call last):
+At line:1 char:1
++ python test_import.py 2>&1 | Out-File 
+-FilePath test_output.txt -Enco ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified 
+   : (Traceback (most recent call last)::  
+  String) [], RemoteException
+    + FullyQualifiedErrorId : NativeComman 
+   dError
+ 
+  File "C:\Users\HP\Desktop\Secret\Project\
+mvp2\agent\test_import.py", line 5, in 
+<module>
+    from app.api.routes import ingest
+  File "C:\Users\HP\Desktop\Secret\Project\
+mvp2\agent\app\api\__init__.py", line 10, 
+in <module>
+    from .routes import health, ingest, 
+analyze, github, auth
+  File "C:\Users\HP\Desktop\Secret\Project\
+mvp2\agent\app\api\routes\__init__.py", 
+line 7, in <module>
+    from . import health, ingest, analyze, 
+github, auth
+  File "C:\Users\HP\Desktop\Secret\Project\
+mvp2\agent\app\api\routes\ingest.py", line 
+18, in <module>
+    from app.core.orchestrator import 
+RCAOrchestrator
+  File "C:\Users\HP\Desktop\Secret\Project\
+mvp2\agent\app\core\orchestrator.py", line 
+8, in <module>
+    from app.services.twilio_service 
+import TwilioService
+  File "C:\Users\HP\Desktop\Secret\Project\
+mvp2\agent\app\services\__init__.py", line 
+7, in <module>
+    from . import rca_service
+  File "C:\Users\HP\Desktop\Secret\Project\
+mvp2\agent\app\services\rca_service.py", 
+line 12, in <module>
+    from app.core.orchestrator import 
+RCAOrchestrator
+ImportError: cannot import name 
+'RCAOrchestrator' from partially 
+initialized module 'app.core.orchestrator' 
+(most likely due to a circular import) (C:\
+Users\HP\Desktop\Secret\Project\mvp2\agent\
+app\core\orchestrator.py)
+
+
+ERROR TYPE: ImportError
+ERROR MSG: cannot import name 'RCAOrchestrator' from partially initialized module 'app.core.orchestrator' (most likely due to a circular import) (C:\Users\HP\Desktop\Secret\Project\mvp2\agent\app\core\orchestrator.py)
