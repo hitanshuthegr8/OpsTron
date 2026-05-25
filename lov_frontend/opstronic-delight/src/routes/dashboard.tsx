@@ -177,8 +177,8 @@ function RCAList({ reports }: { reports: RCAReport[] }) {
 
   return (
     <div className="divide-y divide-border">
-      {reports.map((r) => {
-        const id = String(r.id);
+      {reports.map((r, idx) => {
+        const id = `${String(r.id)}-${idx}`;
         const rca = r.rca_report ?? {};
         const confidence = (rca.confidence ?? "medium").toLowerCase();
         const rootCause = rca.root_cause ?? r.error ?? "Unknown root cause";
@@ -498,8 +498,8 @@ function Incidents() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((i) => (
-              <tr key={i.id} className="border-t border-border/60 hover:bg-accent/30">
+            {filtered.map((i, idx) => (
+              <tr key={`${i.id}-${idx}`} className="border-t border-border/60 hover:bg-accent/30">
                 <td className="px-5 py-3 font-medium">{i.service}</td>
                 <td className="px-5 py-3 max-w-[360px] truncate text-muted-foreground">{i.message}</td>
                 <td className="px-5 py-3"><SeverityDot s={i.severity} /></td>
