@@ -215,7 +215,6 @@ function StepRepo({
   const [selected, setSelected] = useState<Repo | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(!!data.connectedRepoOwner);
-  const [webhookUrl, setWebhookUrl] = useState("");
 
   const loadRepos = useCallback(async () => {
     setLoading(true);
@@ -240,7 +239,7 @@ function StepRepo({
     if (!selected) return;
     setConnecting(true);
     try {
-      await installWebhook(selected.owner, selected.name, data.serviceName.trim(), webhookUrl || undefined);
+      await installWebhook(selected.owner, selected.name, data.serviceName.trim());
       set("repo", selected.full_name);
       set("connectedRepoOwner", selected.owner);
       set("connectedRepoName", selected.name);
@@ -340,19 +339,6 @@ function StepRepo({
           Use the Docker Compose service name or container name your agent will monitor.
         </p>
       </Field>
-
-      {/* Optional webhook URL override */}
-      <div className="space-y-1.5">
-        <Label className="text-sm">Backend public URL <span className="text-muted-foreground">(optional)</span></Label>
-        <Input
-          value={webhookUrl}
-          onChange={(e) => setWebhookUrl(e.target.value)}
-          placeholder="https://opstronic.onrender.com  (leave blank to use default)"
-        />
-        <p className="text-[11px] text-muted-foreground">
-          GitHub needs to reach your backend. Leave blank to use the default Render URL.
-        </p>
-      </div>
 
       {/* Connect button */}
       {selected && !connected && (
