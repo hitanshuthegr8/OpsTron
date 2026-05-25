@@ -127,6 +127,21 @@ export interface AgentStatusResponse {
   hostname?: string;
 }
 
+export interface AlertSettingsPayload {
+  voice_alerts_enabled: boolean;
+  phone_number: string;
+  severity_threshold: "low" | "medium" | "high" | "critical";
+  cooldown_minutes: number;
+  slack_webhook?: string;
+  on_call_email?: string;
+}
+
+export interface AlertSettingsResponse {
+  settings: AlertSettingsPayload & {
+    last_voice_alert_at?: string | null;
+  };
+}
+
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
 /** Redirect browser to GitHub OAuth (backend handles the redirect) */
@@ -175,6 +190,60 @@ export async function installWebhook(
       service_name: serviceName,
     }),
   });
+}
+
+export async function saveAlertSettings(payload: AlertSettingsPayload): Promise<void> {
+  await apiFetch("/settings/alerts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchAlertSettings(): Promise<AlertSettingsPayload | null> {
+  try {
+    const data = await apiFetch<AlertSettingsResponse>("/settings/alerts");
+    return data.settings;
+  } catch {
+    return null;
+  }
+}
+
+export async function rotateAgentApiKey(): Promise<string> {
+  const data = await apiFetch<{ agent_api_key: string }>("/auth/agent-key/rotate", {
+    method: "POST",
+  });
+  localStorage.setItem(AGENT_KEY, data.agent_api_key);
+  return data.agent_api_key;
+}
+
+export async function uploadRunbook(file: File, repo = "", service = ""): Promise<{ filename: string; title: string }> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+  form.append("repo", repo);
+  form.append("service", service);
+
+  const res = await fetch(`${BACKEND}/runbooks/upload`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+
+  if (res.status === 401) {
+    clearAuth();
+    window.location.href = appPath("/login");
+    throw new Error("Session expired");
+  }
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => res.statusText);
+    throw new Error(err);
+  }
+
+  const data = await res.json();
+  return data.runbook;
 }
 
 // ─── Agent ────────────────────────────────────────────────────────────────

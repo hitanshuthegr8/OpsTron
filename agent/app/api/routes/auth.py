@@ -10,6 +10,7 @@ Implements the full GitHub OAuth2 Authorization Code flow:
 
 import httpx
 import logging
+import secrets
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
@@ -20,6 +21,7 @@ from app.api.middleware.auth import (
     get_session,
     verify_github_session,
     GitHubAuth,
+    replace_agent_api_key,
 )
 from app.db.supabase_client import db
 
@@ -185,3 +187,17 @@ async def logout(request: Request):
         destroy_session(token)
     
     return {"message": "Logged out successfully"}
+
+
+@router.post("/agent-key/rotate")
+async def rotate_agent_key(user: dict = GitHubAuth):
+    """Rotate the Docker agent API key for the current user."""
+    github_id = user.get("github_id")
+    if not github_id:
+        raise HTTPException(status_code=401, detail="Missing user id")
+
+    new_key = secrets.token_urlsafe(24)
+    old_key = await db.rotate_agent_api_key(github_id, new_key)
+    replace_agent_api_key(old_key or user.get("agent_api_key", ""), new_key, github_id)
+
+    return {"agent_api_key": new_key}

@@ -22,6 +22,8 @@ import logging
 import sys
 import os
 
+from app.core.config.settings import settings
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -48,6 +50,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # --- Startup ---
+        settings.validate_startup()
         logger.info("=" * 60)
         logger.info("OpsTronic RCA Agent Starting...")
         logger.info(f"Version: 3.0.0")
@@ -80,7 +83,7 @@ def create_app() -> FastAPI:
     # Configure CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Tighten in production
+        allow_origins=settings.cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

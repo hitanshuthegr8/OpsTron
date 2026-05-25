@@ -18,7 +18,7 @@ import {
   setAgentStatus, useAppState, useHydrated,
   type IncidentStatus, type Severity, type RCAReport,
 } from "@/lib/opstronic-store";
-import { fetchRCAHistory, fetchAgentStatus, checkHealth, ingestTestLog, AGENT_KEY } from "@/lib/api";
+import { fetchRCAHistory, fetchAgentStatus, checkHealth, ingestTestLog, uploadRunbook, AGENT_KEY } from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -350,8 +350,38 @@ function Incidents() {
 
 // ─── Runbooks ──────────────────────────────────────────────────────────────────
 function Runbooks() {
-  const [files, setFiles] = useState<{ name: string; size: number }[]>([]);
+  const state = useAppState();
+  const [files, setFiles] = useState<{ name: string; size: number; status: "indexed" | "uploading" | "failed" }[]>([]);
   const [drag, setDrag] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleFiles = async (incoming: File[]) => {
+    const allowed = incoming.filter((file) => /\.(md|markdown|txt)$/i.test(file.name));
+    if (allowed.length !== incoming.length) {
+      setError("Only Markdown and text runbooks can be indexed right now.");
+    } else {
+      setError("");
+    }
+
+    for (const file of allowed) {
+      setFiles((prev) => [...prev, { name: file.name, size: file.size, status: "uploading" }]);
+      try {
+        await uploadRunbook(file, state.onboarding.repo, state.onboarding.serviceName);
+        setFiles((prev) => prev.map((item) => (
+          item.name === file.name && item.status === "uploading"
+            ? { ...item, status: "indexed" }
+            : item
+        )));
+      } catch {
+        setFiles((prev) => prev.map((item) => (
+          item.name === file.name && item.status === "uploading"
+            ? { ...item, status: "failed" }
+            : item
+        )));
+      }
+    }
+  };
+
   return (
     <div className="space-y-5">
       <label
@@ -359,27 +389,27 @@ function Runbooks() {
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => {
           e.preventDefault(); setDrag(false);
-          const f = Array.from(e.dataTransfer.files).map((f) => ({ name: f.name, size: f.size }));
-          setFiles((prev) => [...prev, ...f]);
+          void handleFiles(Array.from(e.dataTransfer.files));
         }}
         className={cn(
           "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed bg-card/40 px-6 py-12 text-center transition-colors",
           drag ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
         )}
       >
-        <input type="file" className="hidden" multiple accept=".md,.markdown,.txt,.pdf"
+        <input type="file" className="hidden" multiple accept=".md,.markdown,.txt"
           onChange={(e) => {
-            const f = Array.from(e.target.files ?? []).map((f) => ({ name: f.name, size: f.size }));
-            setFiles((prev) => [...prev, ...f]);
+            void handleFiles(Array.from(e.target.files ?? []));
+            e.target.value = "";
           }} />
         <div className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
           <Upload className="size-5" />
         </div>
         <div>
           <div className="text-sm font-medium">Drop runbooks here, or click to upload</div>
-          <div className="text-xs text-muted-foreground">Markdown, text, or PDF · max 10 MB each</div>
+          <div className="text-xs text-muted-foreground">Markdown or text · max 500 KB each</div>
         </div>
       </label>
+      {error && <div className="text-sm text-destructive">{error}</div>}
       <div className="rounded-xl border border-border bg-card/60">
         <div className="border-b border-border px-5 py-3 text-sm font-semibold">Uploaded runbooks</div>
         {files.length === 0 ? (
@@ -394,6 +424,14 @@ function Runbooks() {
                 <FileText className="size-4 text-muted-foreground" />
                 <div className="flex-1 truncate text-sm">{f.name}</div>
                 <div className="text-xs text-muted-foreground">{(f.size / 1024).toFixed(1)} KB</div>
+                <div className={cn(
+                  "text-xs",
+                  f.status === "indexed" && "text-success",
+                  f.status === "failed" && "text-destructive",
+                  f.status === "uploading" && "text-muted-foreground",
+                )}>
+                  {f.status}
+                </div>
               </li>
             ))}
           </ul>

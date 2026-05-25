@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { fetchAlertSettings, saveAlertSettings } from "@/lib/api";
 import {
   completeOnboarding,
   logout,
@@ -112,14 +113,42 @@ function Alerts() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => setData(state.onboarding), [state.onboarding]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchAlertSettings().then((settings) => {
+      if (!settings || cancelled) return;
+      setData((current) => ({
+        ...current,
+        voiceAlerts: settings.voice_alerts_enabled,
+        phone: settings.phone_number,
+        threshold: settings.severity_threshold,
+        cooldownMinutes: settings.cooldown_minutes,
+        slackWebhook: settings.slack_webhook ?? "",
+        onCallEmail: settings.on_call_email ?? "",
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const save = async () => {
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 500));
-    completeOnboarding(data);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      await saveAlertSettings({
+        voice_alerts_enabled: data.voiceAlerts,
+        phone_number: data.phone,
+        severity_threshold: data.threshold,
+        cooldown_minutes: data.cooldownMinutes,
+        slack_webhook: data.slackWebhook,
+        on_call_email: data.onCallEmail,
+      });
+      completeOnboarding(data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -194,7 +223,7 @@ function Integrations() {
           <Button variant="outline" size="icon" onClick={copy} aria-label="Copy">
             <Copy className="size-4" />
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { if (confirm("Regenerate API key? The previous key will stop working.")) regenerateApiKey(); }}>
+          <Button variant="outline" size="sm" onClick={async () => { if (confirm("Regenerate API key? The previous key will stop working.")) await regenerateApiKey(); }}>
             <RefreshCw className="size-4" /> Regenerate
           </Button>
         </div>

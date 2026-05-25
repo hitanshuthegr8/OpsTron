@@ -30,10 +30,10 @@ class ChromaStore:
                 settings=ChromaSettings(anonymized_telemetry=False)
             )
             self.collection_name = "runbooks"
-            self._ensure_collection()
         except Exception as e:
             logger.error(f"ChromaDB init failed: {e}")
             self._available = False
+            return
 
         try:
             self.collection = self.client.get_collection(self.collection_name)
@@ -46,20 +46,27 @@ class ChromaStore:
             logger.info(f"Created new collection: {self.collection_name}")
     
     def add_documents(self, documents: List[Dict[str, str]]):
+        if not self._available or self.collection is None:
+            logger.warning("Skipping runbook indexing because ChromaDB is unavailable")
+            return
+
         ids = []
         texts = []
         metadatas = []
         
         for doc in documents:
-            doc_id = doc['filename']
+            doc_id = doc.get('id') or doc['filename']
             ids.append(doc_id)
             texts.append(doc['content'])
             metadatas.append({
                 "title": doc['title'],
-                "filename": doc['filename']
+                "filename": doc['filename'],
+                "github_id": doc.get("github_id", ""),
+                "repo": doc.get("repo", ""),
+                "service": doc.get("service", ""),
             })
         
-        self.collection.add(
+        self.collection.upsert(
             ids=ids,
             documents=texts,
             metadatas=metadatas

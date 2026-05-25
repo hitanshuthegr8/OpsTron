@@ -3,6 +3,7 @@ import {
   clearAuth,
   fetchMe,
   AGENT_KEY,
+  rotateAgentApiKey,
   setToken,
   TOKEN_KEY,
   type BackendUser,
@@ -216,10 +217,13 @@ export function logout() {
   emit();
 }
 
-export function regenerateApiKey() {
-  // TODO: Implement actual backend call to rotate API key
-  console.warn("regenerateApiKey is currently a stub and does not generate a new key.");
-  return getState().apiKey;
+export async function regenerateApiKey() {
+  const newKey = await rotateAgentApiKey();
+  setState((s) => ({
+    apiKey: newKey,
+    user: s.user ? { ...s.user, agentApiKey: newKey } : s.user,
+  }));
+  return newKey;
 }
 
 export function completeOnboarding(data: OnboardingData) {

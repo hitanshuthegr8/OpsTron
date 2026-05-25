@@ -84,6 +84,17 @@ def destroy_session(token: str):
         logger.info(f"Session destroyed for: {session.get('login')}")
 
 
+def replace_agent_api_key(old_key: str, new_key: str, github_id: str) -> None:
+    """Keep in-memory auth caches in sync after key rotation."""
+    if old_key and old_key in api_key_to_user:
+        api_key_to_user.pop(old_key)
+    api_key_to_user[new_key] = github_id
+
+    for session in active_sessions.values():
+        if session.get("github_id") == github_id:
+            session["agent_api_key"] = new_key
+
+
 # ============================================================================
 # Authentication Dependencies (FastAPI Depends)
 # ============================================================================
@@ -202,7 +213,9 @@ async def verify_github_webhook_hmac(request: Request) -> bool:
     """
     secret = getattr(settings, "WEBHOOK_SECRET", None)
     if not secret:
-        logger.warning("WEBHOOK_SECRET not configured - permitting webhook without validation.")
+        if settings.is_production() and not settings.ALLOW_INSECURE_WEBHOOKS:
+            raise HTTPException(status_code=503, detail="WEBHOOK_SECRET is required in production")
+        logger.warning("WEBHOOK_SECRET not configured - permitting webhook without validation in non-production mode.")
         return True
 
     signature_header = request.headers.get("x-hub-signature-256")

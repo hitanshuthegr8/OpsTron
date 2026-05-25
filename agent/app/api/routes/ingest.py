@@ -19,6 +19,7 @@ from app.models.event_models import AgentEventPayload, AgentEventResponse
 from app.core.config.settings import settings
 from app.core.runtime import event_engine, orchestrator, watch_manager
 from app.utils.github_api import GitHubClient
+from app.utils.security import redact_text, truncate_text
 from app.api.middleware.auth import GitHubWebhookAuth, AgentKeyAuth, GitHubAuth, verify_api_key
 from app.db.supabase_client import db
 
@@ -31,6 +32,27 @@ github_client = GitHubClient()
 # In-memory storage for RCA reports (for dashboard display)
 RCA_HISTORY: List[Dict[str, Any]] = []
 MAX_HISTORY_SIZE = 50
+
+
+class SlidingWindowLimiter:
+    def __init__(self):
+        self.events: Dict[str, List[float]] = {}
+
+    def allow(self, key: str, limit: int, window_seconds: int = 60) -> bool:
+        now = time.time()
+        bucket = [
+            ts for ts in self.events.get(key, [])
+            if now - ts < window_seconds
+        ]
+        if len(bucket) >= limit:
+            self.events[key] = bucket
+            return False
+        bucket.append(now)
+        self.events[key] = bucket
+        return True
+
+
+rate_limiter = SlidingWindowLimiter()
 
 # =============================================================================
 # Deployment Watcher
@@ -159,6 +181,10 @@ async def ingest_error(payload: ErrorPayload, _agent: dict = AgentKeyAuth):
     """
     start_time = time.time()
     request_id = payload.request_id or str(uuid.uuid4())[:8]
+    agent_user_id = (_agent or {}).get("user_id", "unknown")
+
+    if not rate_limiter.allow(f"ingest:{agent_user_id}", settings.INGEST_RATE_LIMIT_PER_MINUTE):
+        raise HTTPException(status_code=429, detail="Ingestion rate limit exceeded")
     
     logger.info(f"[{request_id}] [ALERT] Error ingested from service: {payload.service}")
     logger.info(f"[{request_id}] Error: {payload.error}")
@@ -202,6 +228,7 @@ async def ingest_error(payload: ErrorPayload, _agent: dict = AgentKeyAuth):
     try:
         # Prepare log text from stacktrace and/or recent logs
         log_text = _prepare_log_text(payload)
+        log_text = truncate_text(redact_text(log_text), settings.MAX_LOG_CHARS)
         
         # If deployment context exists, add it to log text for AI analysis
         if deployment_context:
@@ -266,8 +293,8 @@ async def ingest_error(payload: ErrorPayload, _agent: dict = AgentKeyAuth):
         severity = "high" if deployment_context else "medium"
         await db.create_rca_log({
             "service":             payload.service,
-            "error":               payload.error,
-            "stacktrace":          payload.stacktrace or "",
+            "error":               redact_text(payload.error),
+            "stacktrace":          truncate_text(redact_text(payload.stacktrace or ""), settings.MAX_LOG_CHARS),
             "rca_report":          result,
             "severity":            severity,
             "endpoint":            payload.endpoint or "",
@@ -570,7 +597,7 @@ async def get_rca_history(limit: int = 20, _user: dict = GitHubAuth):
     Tries Supabase first for persistent history; falls back to in-memory.
     """
     # Try persistent store first
-    db_reports = await db.get_rca_logs(limit=limit)
+    db_reports = await db.get_rca_logs(limit=limit, github_id=_user.get("github_id"))
     if db_reports:
         return {
             "total": len(db_reports),
@@ -593,6 +620,8 @@ async def get_rca_history(limit: int = 20, _user: dict = GitHubAuth):
 @router.post("/agent/events", response_model=AgentEventResponse)
 async def ingest_agent_event(payload: AgentEventPayload, agent_identity: dict = AgentKeyAuth):
     """Structured event endpoint for the OpsTronic Docker agent."""
+    if not rate_limiter.allow(f"event:{agent_identity['user_id']}", settings.INGEST_RATE_LIMIT_PER_MINUTE):
+        raise HTTPException(status_code=429, detail="Event ingestion rate limit exceeded")
     result = await event_engine.process(payload, user_id=agent_identity["user_id"])
     return AgentEventResponse(**result.model_dump())
 
@@ -606,6 +635,8 @@ async def ingest_agent_logs(payload: AgentLogPayload, _agent: dict = AgentKeyAut
     the remote agent securely POSTs streams of logs here.
     """
     start_time = time.time()
+    if not rate_limiter.allow(f"logs:{_agent['user_id']}", settings.INGEST_RATE_LIMIT_PER_MINUTE):
+        raise HTTPException(status_code=429, detail="Log ingestion rate limit exceeded")
     
     logger.info(f"[DOCKER_AGENT] Received block from {payload.container_name} ({payload.container_id[:8]})")
     

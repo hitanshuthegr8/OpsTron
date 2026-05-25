@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.core.config.settings import settings
+from app.utils.security import incident_fingerprint, redact_text, truncate_text
 from app.models.event_models import (
     AgentEventPayload,
     ConfidenceResult,
@@ -30,6 +31,15 @@ class EventEngine:
 
     async def process(self, raw_event: AgentEventPayload, user_id: str) -> EventResult:
         enriched = self._enrich(raw_event, user_id)
+        if enriched.logs:
+            enriched.logs = truncate_text(redact_text(enriched.logs), settings.MAX_LOG_CHARS)
+        enriched.metadata["fingerprint"] = incident_fingerprint(
+            enriched.github_id,
+            enriched.service_name,
+            enriched.type,
+            enriched.reason or "",
+            enriched.logs or "",
+        )
         enriched.severity = self._classify(enriched)
         enriched.correlation = await self._correlate(enriched)
         enriched.confidence = int(enriched.correlation.get("confidence", 0))
@@ -165,6 +175,18 @@ class EventEngine:
         if should_run_rca:
             rca_report = await self._run_rca(event)
             event.metadata["rca_report"] = rca_report
+            await self.db.create_rca_log({
+                "github_id": event.github_id,
+                "repo": event.correlation.get("watch", {}).get("repository") or settings.DEFAULT_REPO,
+                "service": event.service_name,
+                "error": redact_text(event.reason or event.type),
+                "stacktrace": truncate_text(redact_text(event.logs or ""), settings.MAX_LOG_CHARS),
+                "rca_report": rca_report,
+                "severity": event.severity if event.severity in {"low", "medium", "high", "critical"} else "medium",
+                "endpoint": "",
+                "request_id": event.event_id,
+                "is_deployment_error": bool(event.correlation.get("is_deployment_related")),
+            })
 
         phone_alert_triggered = False
         if should_call and self.cooldown.can_alert(event.github_id, event.service_name):
@@ -204,6 +226,17 @@ class EventEngine:
             return {"error": str(exc), "root_cause": "analysis_failed", "confidence": "low"}
 
     async def _send_phone_alert(self, event: EnrichedEvent, rca_report: Optional[Dict[str, Any]]) -> bool:
+        alert_settings = await self.db.get_alert_settings(event.github_id)
+        if alert_settings and not alert_settings.get("voice_alerts_enabled"):
+            await self.db.record_alert_event({
+                "github_id": event.github_id,
+                "channel": "voice",
+                "status": "skipped",
+                "reason": "voice_disabled",
+                "severity": event.severity,
+            })
+            return False
+
         root_cause = (rca_report or {}).get("root_cause", "an incident that needs attention")
         message = (
             f"OpsTronic alert. A critical event was detected in {event.service_name} "
@@ -211,7 +244,18 @@ class EventEngine:
             f"Please check your dashboard."
         )
         try:
-            return await asyncio.to_thread(self.alert_service.send_voice_alert, message)
+            phone_number = (alert_settings or {}).get("phone_number") if alert_settings else None
+            sent = await asyncio.to_thread(self.alert_service.send_voice_alert, message, phone_number)
+            await self.db.record_alert_event({
+                "github_id": event.github_id,
+                "channel": "voice",
+                "status": "sent" if sent else "failed",
+                "reason": "policy_matched" if sent else "twilio_error",
+                "severity": event.severity,
+            })
+            if sent:
+                await self.db.mark_voice_alert_sent(event.github_id)
+            return sent
         except Exception as exc:
             logger.error("[EVENT] Phone alert failed: %s", exc)
             return False

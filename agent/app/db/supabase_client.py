@@ -6,6 +6,7 @@ Manages connection to Supabase for database operations and authentication.
 
 import logging
 from typing import Optional, Dict, Any, List
+from datetime import datetime
 from supabase import create_client, Client
 from app.core.config.settings import settings
 
@@ -112,12 +113,15 @@ class Database:
         result = self.client.table("rca_logs").insert(data).execute()
         return result.data[0] if result.data else None
     
-    async def get_rca_logs(self, limit: int = 20) -> List[Dict[str, Any]]:
+    async def get_rca_logs(self, limit: int = 20, github_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get recent RCA logs."""
         if not self.client:
             return []
-        
-        result = self.client.table("rca_logs").select("*").order("created_at", desc=True).limit(limit).execute()
+
+        query = self.client.table("rca_logs").select("*")
+        if github_id:
+            query = query.eq("github_id", github_id)
+        result = query.order("created_at", desc=True).limit(limit).execute()
         return result.data or []
     
     async def get_rca_by_deployment(self, deployment_id: str) -> List[Dict[str, Any]]:
@@ -136,6 +140,68 @@ class Database:
 
         result = self.client.table("agent_events").insert(data).execute()
         return result.data[0] if result.data else None
+
+    # =========================================================================
+    # Alert Settings
+    # =========================================================================
+
+    async def upsert_alert_settings(self, github_id: str, data: Dict[str, Any]) -> bool:
+        if not self.client:
+            logger.warning("[DB] Supabase not configured - skipping alert settings write")
+            return False
+        try:
+            payload = {
+                "github_id": github_id,
+                "voice_alerts_enabled": data.get("voice_alerts_enabled", True),
+                "phone_number": data.get("phone_number", ""),
+                "severity_threshold": data.get("severity_threshold", "high"),
+                "cooldown_minutes": data.get("cooldown_minutes", 15),
+                "slack_webhook": data.get("slack_webhook", ""),
+                "on_call_email": data.get("on_call_email", ""),
+            }
+            self.client.table("alert_settings").upsert(payload, on_conflict="github_id").execute()
+            return True
+        except Exception as e:
+            logger.error(f"[DB] upsert_alert_settings failed: {e}")
+            return False
+
+    async def get_alert_settings(self, github_id: str) -> Optional[Dict[str, Any]]:
+        if not self.client or not github_id or github_id == "legacy":
+            return None
+        try:
+            result = (
+                self.client.table("alert_settings")
+                .select("*")
+                .eq("github_id", github_id)
+                .single()
+                .execute()
+            )
+            return result.data
+        except Exception as e:
+            logger.debug(f"[DB] get_alert_settings miss for {github_id}: {e}")
+            return None
+
+    async def mark_voice_alert_sent(self, github_id: str) -> bool:
+        if not self.client or not github_id or github_id == "legacy":
+            return False
+        try:
+            self.client.table("alert_settings").update(
+                {"last_voice_alert_at": datetime.utcnow().isoformat()}
+            ).eq("github_id", github_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"[DB] mark_voice_alert_sent failed: {e}")
+            return False
+
+    async def record_alert_event(self, data: Dict[str, Any]) -> bool:
+        if not self.client:
+            return False
+        try:
+            self.client.table("alert_events").insert(data).execute()
+            return True
+        except Exception as e:
+            logger.debug(f"[DB] record_alert_event failed: {e}")
+            return False
     
     # =========================================================================
     # Commits
@@ -289,6 +355,20 @@ class Database:
             return result.data
         except Exception as e:
             logger.debug(f"[DB] get_user_by_api_key miss: {e}")
+            return None
+
+    async def rotate_agent_api_key(self, github_id: str, new_api_key: str) -> Optional[str]:
+        if not self.client:
+            return None
+        try:
+            existing = await self.get_user_by_github_id(github_id)
+            old_key = existing.get("agent_api_key") if existing else None
+            self.client.table("opstronic_users").update(
+                {"agent_api_key": new_api_key}
+            ).eq("github_id", github_id).execute()
+            return old_key
+        except Exception as e:
+            logger.error(f"[DB] rotate_agent_api_key failed: {e}")
             return None
 
     # =========================================================================

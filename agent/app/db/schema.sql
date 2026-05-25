@@ -368,6 +368,59 @@ BEGIN
   END IF;
 END $$;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'rca_logs' AND column_name = 'repo'
+  ) THEN
+    ALTER TABLE rca_logs ADD COLUMN repo TEXT;
+    CREATE INDEX idx_rca_logs_repo ON rca_logs(repo);
+  END IF;
+END $$;
+
+
+-- =============================================================================
+-- Alert Settings
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS alert_settings (
+  github_id              TEXT PRIMARY KEY REFERENCES opstronic_users(github_id) ON DELETE CASCADE,
+  voice_alerts_enabled   BOOLEAN DEFAULT TRUE,
+  phone_number           TEXT,
+  severity_threshold     TEXT DEFAULT 'high' CHECK (severity_threshold IN ('low', 'medium', 'high', 'critical')),
+  cooldown_minutes       INTEGER DEFAULT 15 CHECK (cooldown_minutes >= 1),
+  slack_webhook          TEXT,
+  on_call_email          TEXT,
+  last_voice_alert_at    TIMESTAMPTZ,
+  created_at             TIMESTAMPTZ DEFAULT NOW(),
+  updated_at             TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_settings_updated ON alert_settings(updated_at DESC);
+
+ALTER TABLE alert_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON alert_settings TO service_role;
+
+
+-- =============================================================================
+-- Alert Events
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS alert_events (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  github_id     TEXT REFERENCES opstronic_users(github_id) ON DELETE SET NULL,
+  channel       TEXT NOT NULL,
+  status        TEXT NOT NULL CHECK (status IN ('sent', 'skipped', 'failed')),
+  reason        TEXT,
+  severity      TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_events_user ON alert_events(github_id);
+CREATE INDEX IF NOT EXISTS idx_alert_events_created ON alert_events(created_at DESC);
+
+ALTER TABLE alert_events ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON alert_events TO service_role;
+
 -- Add user_id to deployments
 DO $$
 BEGIN
