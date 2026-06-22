@@ -150,7 +150,7 @@ class DeploymentPayload(BaseModel):
     """
     Deployment notification payload from CI/CD (GitHub Actions).
     
-    This is sent when code is pushed, allowing OpsTronic to enter
+    This is sent when code is pushed, allowing OpsTron to enter
     "Deployment Watch Mode" and correlate errors with recent commits.
     """
     
@@ -162,12 +162,12 @@ class DeploymentPayload(BaseModel):
     repository: str = Field(
         ...,
         description="GitHub repository in owner/repo format",
-        example="Himanhuthegr8/OpsTronic"
+        example="YOUR_GITHUB_USERNAME/OpsTron"
     )
     author: str = Field(
         ...,
         description="GitHub username of the commit author",
-        example="Himanhuthegr8"
+        example="YOUR_GITHUB_USERNAME"
     )
     message: Optional[str] = Field(
         default="",
@@ -186,8 +186,8 @@ class DeploymentPayload(BaseModel):
         json_schema_extra = {
             "example": {
                 "commit_sha": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
-                "repository": "Himanhuthegr8/OpsTronic",
-                "author": "Himanhuthegr8",
+                "repository": "YOUR_GITHUB_USERNAME/OpsTron",
+                "author": "YOUR_GITHUB_USERNAME",
                 "message": "fix: updated database connection logic",
                 "branch": "main"
             }
@@ -226,7 +226,7 @@ class DeploymentResponse(BaseModel):
 
 class AgentLogPayload(BaseModel):
     """
-    Payload from the lightweight OpsTronic Docker Agent.
+    Payload from the lightweight OpsTron Docker Agent.
     
     The agent streams container logs to this endpoint.
     """

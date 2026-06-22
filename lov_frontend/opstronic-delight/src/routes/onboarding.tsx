@@ -46,7 +46,7 @@ import {
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
     meta: [
-      { title: "Set up OpsTronic — Connect repo, agent, and alerts" },
+      { title: "Set up OpsTron — Connect repo, agent, and alerts" },
       { name: "description", content: "Three-step setup: connect a repo, install the Docker agent, and configure paging." },
     ],
   }),
@@ -135,7 +135,7 @@ function OnboardingPage() {
           <div className="grid size-8 place-items-center rounded-md bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]">
             <Activity className="size-4" />
           </div>
-          <span className="text-base font-semibold tracking-tight">OpsTronic setup</span>
+          <span className="text-base font-semibold tracking-tight">OpsTron setup</span>
         </div>
 
         {/* Stepper */}
@@ -255,7 +255,7 @@ function StepRepo({
     <div className="space-y-5">
       <Header
         title="Connect a repository"
-        desc="OpsTronic watches for pushes to your repo. Select one and we'll install the webhook automatically."
+        desc="OpsTron watches for pushes to your repo. Select one and we'll install the webhook automatically."
       />
 
       {/* Repo search + list */}
@@ -357,7 +357,7 @@ function StepRepo({
           <CheckCheck className="size-4 shrink-0" />
           <div>
             <div className="font-medium">Webhook installed!</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{data.repo} — OpsTronic will receive every push event.</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{data.repo} — OpsTron will receive every push event.</div>
           </div>
         </div>
       )}
@@ -389,12 +389,13 @@ function StepDocker({ apiKey, serviceName }: { apiKey: string; serviceName: stri
   }, [apiKey]);
 
   const watchedService = serviceName || "your-app";
-  const composeSnippet = `  opstronic-agent:
-    image: opstronic/agent:latest
+  const backendUrl = BACKEND || "https://your-backend-url";
+  const composeSnippet = `  opstron-agent:
+    image: opstron/agent:latest
     restart: unless-stopped
     environment:
-      OPSTRONIC_API_KEY: "${apiKey}"
-      OPSTRONIC_BACKEND_URL: "${BACKEND}"
+      OPSTRON_API_KEY: "${apiKey}"
+      OPSTRON_BACKEND_URL: "${backendUrl}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
@@ -402,15 +403,15 @@ function StepDocker({ apiKey, serviceName }: { apiKey: string; serviceName: stri
   ${watchedService}:
     # keep your existing image/build/ports here
     labels:
-      opstronic.monitor: "true"`;
+      opstron.monitor: "true"`;
 
   const runSnippet = `docker run -d \\
-  -e OPSTRONIC_API_KEY="${apiKey}" \\
-  -e OPSTRONIC_BACKEND_URL="${BACKEND}" \\
+  -e OPSTRON_API_KEY="${apiKey}" \\
+  -e OPSTRON_BACKEND_URL="${backendUrl}" \\
   -v /var/run/docker.sock:/var/run/docker.sock:ro \\
-  --name opstronic-agent \\
+  --name opstron-agent \\
   --restart unless-stopped \\
-  opstronic/agent:latest`;
+  opstron/agent:latest`;
 
   const copy = async (text: string, which: "compose" | "run") => {
     await navigator.clipboard.writeText(text);
@@ -422,7 +423,7 @@ function StepDocker({ apiKey, serviceName }: { apiKey: string; serviceName: stri
     <div className="space-y-6">
       <Header
         title="Install the Docker agent"
-        desc="A lightweight sidecar that streams container errors to OpsTronic's AI engine in real-time. Zero inbound traffic, zero code changes."
+        desc="A lightweight sidecar that streams container errors to OpsTron's AI engine in real-time. Zero inbound traffic, zero code changes."
       />
 
       {/* Agent status */}
@@ -469,7 +470,7 @@ function StepDocker({ apiKey, serviceName }: { apiKey: string; serviceName: stri
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Then opt your main service in: <code className="rounded bg-muted px-1 py-0.5">docker run --label opstronic.monitor=true {watchedService}</code>
+          Then opt your main service in: <code className="rounded bg-muted px-1 py-0.5">docker run --label opstron.monitor=true {watchedService}</code>
         </p>
       </div>
 

@@ -407,7 +407,7 @@ async def notify_deployment(request: Request):
     """
     Deployment Notification Endpoint.
     
-    Called natively by GitHub Webhooks when code is pushed. Puts OpsTronic into
+    Called natively by GitHub Webhooks when code is pushed. Puts OpsTron into
     "Deployment Watch Mode" for the next 5 minutes.
     """
     payload_dict = await request.json()
@@ -420,7 +420,7 @@ async def notify_deployment(request: Request):
             deployment_id="ping",
             commit_sha="ping",
             watch_until="",
-            message="OpsTronic webhook ping received successfully."
+            message="OpsTron webhook ping received successfully."
         )
 
     # Parse standard GitHub Push Event
@@ -536,7 +536,7 @@ async def notify_deployment(request: Request):
         deployment_id=first_deployment_id or deployment_id,
         commit_sha=parsed_payload.commit_sha,
         watch_until=active["watch_until"] if active else "",
-        message=f"OpsTronic is watching {len(services_watched)} service(s) for commit {parsed_payload.commit_sha[:7]}: {', '.join(services_watched) or 'repo-level watch'}.",
+        message=f"OpsTron is watching {len(services_watched)} service(s) for commit {parsed_payload.commit_sha[:7]}: {', '.join(services_watched) or 'repo-level watch'}.",
         services_watched=services_watched,
     )
 
@@ -560,7 +560,7 @@ async def get_deployment_status(_user: dict = GitHubAuth):
     """
     Get current deployment watch status.
     
-    Returns whether OpsTronic is currently in watch mode and details
+    Returns whether OpsTron is currently in watch mode and details
     about the active deployment being monitored.
     """
     active = await deployment_watcher.get_active_deployment()
@@ -628,7 +628,7 @@ async def get_rca_history(limit: int = 20, _user: dict = GitHubAuth):
 
 @router.post("/agent/events", response_model=AgentEventResponse)
 async def ingest_agent_event(payload: AgentEventPayload, agent_identity: dict = AgentKeyAuth):
-    """Structured event endpoint for the OpsTronic Docker agent."""
+    """Structured event endpoint for the OpsTron Docker agent."""
     if not rate_limiter.allow(f"event:{agent_identity['user_id']}", settings.INGEST_RATE_LIMIT_PER_MINUTE):
         raise HTTPException(status_code=429, detail="Event ingestion rate limit exceeded")
     result = await event_engine.process(payload, user_id=agent_identity["user_id"])
@@ -638,7 +638,7 @@ async def ingest_agent_event(payload: AgentEventPayload, agent_identity: dict = 
 @router.post("/agent/logs/ingest", response_model=AgentLogResponse)
 async def ingest_agent_logs(payload: AgentLogPayload, _agent: dict = AgentKeyAuth):
     """
-    Endpoint for the lightweight OpsTronic Docker Agent.
+    Endpoint for the lightweight OpsTron Docker Agent.
     
     Instead of polling user environments via dangerous socket access,
     the remote agent securely POSTs streams of logs here.
@@ -698,7 +698,7 @@ async def agent_heartbeat(
     agent_identity: dict = AgentKeyAuth,
 ):
     """
-    Called by opstronic-agent on startup and every 60 seconds.
+    Called by opstron-agent on startup and every 60 seconds.
 
     Write-through cache: updates in-memory dict (fast reads) AND
     Supabase (survives Render restarts). Two users' agents never overlap.
@@ -752,7 +752,7 @@ async def get_agent_status(user: dict = AgentKeyAuth):
     if not data:
         return {
             "status": "offline",
-            "message": "No agent connected. Run the opstronic-agent Docker container.",
+            "message": "No agent connected. Run the opstron-agent Docker container.",
         }
 
     # Check freshness — treat as offline if last seen > 90 seconds ago
@@ -789,7 +789,7 @@ async def get_agent_status_by_session(user: dict = GitHubAuth):
     if not data:
         return {
             "status": "offline",
-            "message": "No agent connected. Run the opstronic-agent Docker container.",
+            "message": "No agent connected. Run the opstron-agent Docker container.",
         }
 
     last_seen = datetime.fromisoformat(data["last_seen"])

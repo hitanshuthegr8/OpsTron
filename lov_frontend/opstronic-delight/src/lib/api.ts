@@ -1,9 +1,9 @@
 /**
  * OpsTron Backend API Client
- * All calls go to the deployed FastAPI backend on Render.
+ * Configure VITE_BACKEND_URL in GitHub Pages/Render deployment settings.
  */
 
-export const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://opstronic.onrender.com";
+export const BACKEND = import.meta.env.VITE_BACKEND_URL || "";
 const APP_BASE = import.meta.env.PROD ? "/OpsTron" : "";
 
 // ─── Auth token helpers ────────────────────────────────────────────────────

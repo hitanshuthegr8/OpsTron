@@ -61,7 +61,7 @@ Repository: {repo or "Any"}
 
 ## First Response
 1. Confirm the affected service/container is still running.
-2. Check the most recent OpsTronic RCA report for root cause, confidence, and deployment correlation.
+2. Check the most recent OpsTron RCA report for root cause, confidence, and deployment correlation.
 3. Inspect the last 100 container log lines around the first error.
 4. If the incident followed a deployment, compare the failing code path with the pushed commit.
 5. Decide whether to roll back, hotfix, or keep observing based on severity and customer impact.

@@ -1,7 +1,7 @@
 """
 LLM Client — Groq via LangChain
 
-All AI inference in OpsTronic goes through this single client.
+All AI inference in OpsTron goes through this single client.
 Currently uses Groq's `llama-3.3-70b-versatile` model for speed and quality.
 
 To swap models: change `model_name` in `_init_groq()`.

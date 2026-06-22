@@ -1,32 +1,34 @@
 #!/usr/bin/env python3
 """
-OpsTronic Log Forwarding Agent v4.0
+OpsTron Log Forwarding Agent v4.0
 
 WHAT CHANGED FROM v3:
-  ✅ Label filtering   — only monitors containers you opt-in with opstronic.monitor=true
+  ✅ Label filtering   — only monitors containers you opt-in with opstron.monitor=true
   ✅ Delta logging     — tracks last-seen timestamp per container, sends NEW lines only
   ✅ Docker events     — instant crash/OOM/kill detection via event stream (no polling)
   ✅ Heartbeat         — agent reports liveness to backend every 60 seconds
   ✅ Exponential retry — backs off on network failures instead of hammering the backend
 
 HOW TO OPT A CONTAINER IN:
-  Add this label to any container you want OpsTronic to watch:
+  Add this label to any container you want OpsTron to watch:
     labels:
-      opstronic.monitor: "true"
+      opstron.monitor: "true"
 
   Or via docker run:
-    docker run --label opstronic.monitor=true ...
+    docker run --label opstron.monitor=true ...
 
 USAGE:
-  export OPSTRONIC_API_KEY="your-key-from-opstronic-dashboard"
-  export OPSTRONIC_BACKEND_URL="https://opstronic.onrender.com"
+  export OPSTRON_API_KEY="your-key-from-opstron-dashboard"
+  export OPSTRON_BACKEND_URL="https://your-backend-url"
   python3 opstronic_forwarder.py
 
 ENVIRONMENT VARIABLES:
-  OPSTRONIC_API_KEY      (required) Your unique agent key from the OpsTronic dashboard
-  OPSTRONIC_BACKEND_URL  (required) Base URL of the OpsTronic backend (no trailing slash)
-  OPSTRONIC_POLL_SECS    (optional) How often to poll for new logs, default 30
-  OPSTRONIC_LABEL        (optional) Label to filter on, default opstronic.monitor=true
+  OPSTRON_API_KEY        (required) Your unique agent key from the OpsTron dashboard
+  OPSTRON_BACKEND_URL    (required) Base URL of the OpsTron backend (no trailing slash)
+  OPSTRON_POLL_SECS      (optional) How often to poll for new logs, default 30
+  OPSTRON_LABEL          (optional) Label to filter on, default opstron.monitor=true
+
+  Legacy OPSTRONIC_* variable names are still accepted for compatibility.
 
 SECURITY NOTE:
   This script is entirely read-only. It only calls container.logs() and
@@ -49,10 +51,18 @@ import docker
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-API_KEY      = os.environ.get("OPSTRONIC_API_KEY", "").strip()
-BACKEND_URL  = os.environ.get("OPSTRONIC_BACKEND_URL", "https://opstronic.onrender.com").rstrip("/")
-POLL_SECS    = int(os.environ.get("OPSTRONIC_POLL_SECS", "30"))
-MONITOR_LABEL = os.environ.get("OPSTRONIC_LABEL", "opstronic.monitor")
+API_KEY = (
+    os.environ.get("OPSTRON_API_KEY")
+    or os.environ.get("OPSTRONIC_API_KEY")
+    or ""
+).strip()
+BACKEND_URL = (
+    os.environ.get("OPSTRON_BACKEND_URL")
+    or os.environ.get("OPSTRONIC_BACKEND_URL")
+    or ""
+).rstrip("/")
+POLL_SECS = int(os.environ.get("OPSTRON_POLL_SECS") or os.environ.get("OPSTRONIC_POLL_SECS") or "30")
+MONITOR_LABEL = os.environ.get("OPSTRON_LABEL") or os.environ.get("OPSTRONIC_LABEL") or "opstron.monitor"
 AGENT_VERSION = "4.0.0"
 HOSTNAME      = socket.gethostname()
 
@@ -68,7 +78,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger("opstronic-agent")
+logger = logging.getLogger("opstron-agent")
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +174,7 @@ def poll_logs(docker_client: docker.DockerClient):
     containers = get_monitored_containers(docker_client)
 
     if not containers:
-        logger.debug("No containers with opstronic.monitor=true found. Waiting...")
+        logger.debug("No containers with opstron.monitor=true found. Waiting...")
         return
 
     for container in containers:
@@ -385,12 +395,16 @@ def watch_events(docker_client: docker.DockerClient):
 # ---------------------------------------------------------------------------
 def main():
     if not API_KEY:
-        logger.error("FATAL: OPSTRONIC_API_KEY is not set.")
-        logger.error("Get your key from the OpsTronic dashboard after logging in.")
+        logger.error("FATAL: OPSTRON_API_KEY is not set.")
+        logger.error("Get your key from the OpsTron dashboard after logging in.")
+        sys.exit(1)
+    if not BACKEND_URL:
+        logger.error("FATAL: OPSTRON_BACKEND_URL is not set.")
+        logger.error("Set it to your deployed OpsTron backend URL, without a trailing slash.")
         sys.exit(1)
 
     logger.info("=" * 60)
-    logger.info(f"  OpsTronic Agent v{AGENT_VERSION}")
+    logger.info(f"  OpsTron Agent v{AGENT_VERSION}")
     logger.info(f"  Host    : {HOSTNAME}")
     logger.info(f"  Backend : {BACKEND_URL}")
     logger.info(f"  Filter  : label {MONITOR_LABEL}=true")
@@ -444,5 +458,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logger.info("OpsTronic Agent shutting down gracefully.")
+        logger.info("OpsTron Agent shutting down gracefully.")
         sys.exit(0)

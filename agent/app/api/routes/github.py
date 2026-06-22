@@ -28,7 +28,7 @@ class GitHubConfigRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "token": "ghp_xxxxxxxxxxxx",
+                "token": "YOUR_GITHUB_TOKEN",
                 "repo": "owner/repository"
             }
         }

@@ -1,5 +1,5 @@
 """
-OpsTronic Configuration Settings
+OpsTron Configuration Settings
 
 Manages all environment variables and application settings.
 """
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # GitHub Integration
     # ==========================================================================
     GITHUB_TOKEN: str = ""
-    DEFAULT_REPO: str = "Himanhuthegr8/OpsTronic"
+    DEFAULT_REPO: str = ""
     
     # ==========================================================================
     # ChromaDB (Runbooks)

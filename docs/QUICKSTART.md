@@ -51,8 +51,8 @@ pip install -r requirements.txt
 copy config\.env.example config\.env
 
 # Edit config/.env and add your credentials:
-# GEMINI_API_KEY=AIzaSy...
-# GITHUB_TOKEN=ghp_...
+# GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+# GITHUB_TOKEN=YOUR_GITHUB_TOKEN
 # CHROMA_PERSIST_DIR=./db/chroma_data
 ```
 

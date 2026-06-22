@@ -27,7 +27,7 @@ import {
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Settings — OpsTronic" },
+      { title: "Settings — OpsTron" },
       { name: "description", content: "Manage your profile, alerting rules, integrations, API keys and account." },
     ],
   }),
@@ -46,7 +46,7 @@ function SettingsPage() {
     <div className="px-5 py-6 sm:px-8">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Configure how OpsTronic behaves for your team.</p>
+        <p className="text-sm text-muted-foreground">Configure how OpsTron behaves for your team.</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
@@ -212,7 +212,7 @@ function Integrations() {
 
   return (
     <div className="space-y-6">
-      <Card title="API key" desc="Use this to authenticate the OpsTronic agent on your hosts.">
+      <Card title="API key" desc="Use this to authenticate the OpsTron agent on your hosts.">
         <div className="flex items-center gap-2">
           <div className="flex-1 rounded-md border border-border bg-background px-3 py-2 font-mono text-sm">
             {show ? state.apiKey : "•".repeat(Math.min(40, state.apiKey.length))}
@@ -230,7 +230,7 @@ function Integrations() {
         {copied && <p className="mt-2 text-xs text-success">Copied to clipboard.</p>}
       </Card>
 
-      <Card title="Channels" desc="Where OpsTronic sends notifications.">
+      <Card title="Channels" desc="Where OpsTron sends notifications.">
         <div className="space-y-4">
           <Row name="Main service" value={state.onboarding.serviceName} placeholder="No service configured" />
           <Row name="Slack" value={state.onboarding.slackWebhook} placeholder="No webhook configured" />
@@ -272,7 +272,7 @@ function Danger() {
       </div>
       <div className="space-y-4 p-6">
         <p className="text-sm">
-          Type <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">DELETE</code> to wipe your OpsTronic account, integrations, and incident history.
+          Type <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">DELETE</code> to wipe your OpsTron account, integrations, and incident history.
         </p>
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="DELETE" />
         <Button variant="destructive" disabled={text !== "DELETE"} onClick={wipe}>

@@ -33,9 +33,9 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "OpsTronic — Autonomous Incident Response" },
+      { title: "OpsTron — Autonomous Incident Response" },
       { name: "description", content: "AI-powered root cause analysis for production incidents." },
-      { property: "og:title", content: "OpsTronic" },
+      { property: "og:title", content: "OpsTron" },
       { property: "og:description", content: "AI-powered incident response — know what broke and why, before customers notice." },
       { property: "og:type", content: "website" },
     ],

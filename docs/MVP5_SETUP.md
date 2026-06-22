@@ -1,4 +1,4 @@
-# OpsTronic MVP5 - Setup Guide
+# OpsTron MVP5 - Setup Guide
 
 ## 🎯 What We've Implemented
 
@@ -24,12 +24,12 @@ cd agent/config
 
 ```env
 # Supabase (from your dashboard)
-SUPABASE_URL=https://xsztdqdtqkmpqczqyzdu.supabase.co
-SUPABASE_ANON_KEY=your_publishable_key_here    # Copy full key from Supabase
-SUPABASE_SERVICE_KEY=your_secret_key_here       # Copy full key from Supabase
+SUPABASE_URL=
+SUPABASE_ANON_KEY=    # Copy full key from Supabase
+SUPABASE_SERVICE_KEY=       # Copy full key from Supabase
 
 # Service API Key (for GitHub Actions)
-SERVICE_API_KEY=OpsTronic2024SecureKey123456789   # Any random 32+ char string
+SERVICE_API_KEY=OpsTron2024SecureKey123456789   # Any random 32+ char string
 ```
 
 ### Step 2: Create Database Tables
@@ -43,8 +43,8 @@ SERVICE_API_KEY=OpsTronic2024SecureKey123456789   # Any random 32+ char string
 
 Add the service API key to GitHub:
 
-1. Go to: https://github.com/Himanhuthegr8/OpsTronic/settings/secrets/actions
-2. Edit `OPSTRONIC_URL` or add new secret: `OPSTRONIC_API_KEY`
+1. Go to: https://github.com/YOUR_GITHUB_USERNAME/OpsTron/settings/secrets/actions
+2. Edit `OPSTRON_URL` or add new secret: `OPSTRON_API_KEY`
 3. Value: Same as `SERVICE_API_KEY` in your .env
 
 ### Step 4: Update GitHub Action Workflow
@@ -52,10 +52,10 @@ Add the service API key to GitHub:
 Edit `.github/workflows/opstronic_notify.yml` to include the API key:
 
 ```yaml
-- name: Notify OpsTronic Agent
+- name: Notify OpsTron Agent
   run: |
-    curl -X POST "${{ secrets.OPSTRONIC_URL }}/notify-deployment" \
-      -H "Authorization: Bearer ${{ secrets.OPSTRONIC_API_KEY }}" \
+    curl -X POST "${{ secrets.OPSTRON_URL }}/notify-deployment" \
+      -H "Authorization: Bearer ${{ secrets.OPSTRON_API_KEY }}" \
       -H "Content-Type: application/json" \
       -d '{...}'
 ```

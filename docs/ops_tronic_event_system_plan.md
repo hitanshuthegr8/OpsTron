@@ -1,8 +1,8 @@
-# OpsTronic Event System - Production Implementation Plan
+# OpsTron Event System - Production Implementation Plan
 
 ## 1. System Overview
 
-OpsTronic needs a structured event system so Docker crashes, deployment webhooks,
+OpsTron needs a structured event system so Docker crashes, deployment webhooks,
 application log errors, and heartbeat state all flow through one consistent
 pipeline.
 

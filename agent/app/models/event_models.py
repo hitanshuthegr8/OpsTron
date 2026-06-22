@@ -1,5 +1,5 @@
 """
-Structured event models for the OpsTronic event system.
+Structured event models for the OpsTron event system.
 """
 
 from datetime import datetime, timezone

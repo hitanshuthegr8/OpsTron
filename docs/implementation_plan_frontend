@@ -1,6 +1,6 @@
-# OpsTronic Delight: Frontend Integration PRD & Architecture
+# OpsTron Delight: Frontend Integration PRD & Architecture
 
-This document defines the Product Requirements and technical architecture for ensuring an **optimal connection** between the new React/TanStack frontend (`lov_frontend/opstronic-delight`) and the existing OpsTronic FastAPI backend.
+This document defines the Product Requirements and technical architecture for ensuring an **optimal connection** between the new React/TanStack frontend (`lov_frontend/opstronic-delight`) and the existing OpsTron FastAPI backend.
 
 ## 1. Product Requirements (PRD)
 
@@ -39,7 +39,7 @@ To ensure the connection is reliable, secure, and performant:
 ## 3. User Review Required
 
 > [!IMPORTANT]
-> The backend URL is currently hardcoded to `https://opstronic.onrender.com`. 
+> The backend URL is currently hardcoded to `https://YOUR_BACKEND_URL`. 
 > If you plan to test this locally alongside the backend (e.g., backend running on `localhost:8001`), we will need to change the `BACKEND` constant in `src/lib/api.ts`.
 > **Do you want to test against the live Render backend, or a local backend?**
 

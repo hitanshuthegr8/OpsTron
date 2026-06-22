@@ -119,7 +119,7 @@ Get OpsTron running locally in under 60 seconds.
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/hitanshuthegr8/OpsTron.git
+git clone https://github.com/YOUR_GITHUB_USERNAME/OpsTron.git
 cd OpsTron/agent
 python -m venv venv
 source venv/bin/activate  # On Windows use: venv\Scripts\activate
@@ -148,8 +148,8 @@ To enable Deployment Protection, you need to tell GitHub to securely ping OpsTro
 1. Generate a secure secret: `openssl rand -hex 32`
 2. Add this secret to your `agent/.env` as `WEBHOOK_SECRET="your_secret"`.
 3. In your GitHub Repository, go to **Settings > Secrets and variables > Actions**.
-4. Add `OPSTRONIC_WEBHOOK_SECRET` (the secret from step 1).
-5. Add `OPSTRONIC_BACKEND_URL` (the public URL/ngrok of your `main.py` server).
+4. Add `OPSTRON_WEBHOOK_SECRET` (the secret from step 1).
+5. Add `OPSTRON_BACKEND_URL` (the public URL/ngrok of your `main.py` server).
 
 The included workflow (`.github/workflows/opstronic_notify.yml`) will now automatically arm the defense grid on every push!
 
@@ -162,7 +162,7 @@ You don't need to expose your Docker daemon. OpsTron uses a secure push-based mo
 Run the lightweight forwarder script alongside your production apps:
 ```bash
 # Set environment variables for the target container
-export OPSTRONIC_URL="http://your-opstronic-server:8001"
+export OPSTRON_URL="http://your-opstron-server:8001"
 export CONTAINER_NAME="my-crashing-backend"
 
 # Start the forwarder

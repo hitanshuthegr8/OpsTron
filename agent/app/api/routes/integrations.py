@@ -3,7 +3,7 @@ GitHub Integration Routes
 
 Provides endpoints for the repo picker and webhook auto-installation.
 These routes proxy GitHub API calls using the user's OAuth token
-stored in their OpsTronic session, so the user never has to paste
+stored in their OpsTron session, so the user never has to paste
 secrets or edit YAML files manually.
 
 Endpoints:
@@ -64,7 +64,7 @@ async def list_repos(session: dict = GitHubAuth):
     """
     Fetch all repos accessible to the logged-in GitHub user.
 
-    Uses the GitHub access token stored in the user's OpsTronic session.
+    Uses the GitHub access token stored in the user's OpsTron session.
     Returns repos sorted by recently pushed, filtering out forks.
     """
     github_token = session.get("github_access_token")
@@ -189,7 +189,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
                 return {
                     "status": "already_exists",
                     "hook_id": hook["id"],
-                    "message": f"OpsTronic webhook is already active on {body.owner}/{body.repo}.",
+                    "message": f"OpsTron webhook is already active on {body.owner}/{body.repo}.",
                     "repo": f"{body.owner}/{body.repo}",
                 }
 
@@ -242,7 +242,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
     return {
         "status": "created",
         "hook_id": hook["id"],
-        "message": f"OpsTronic is now watching {body.owner}/{body.repo} for pushes!",
+        "message": f"OpsTron is now watching {body.owner}/{body.repo} for pushes!",
         "repo": f"{body.owner}/{body.repo}",
         "events": hook.get("events", ["push"]),
     }
@@ -255,7 +255,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
 @router.delete("/remove-webhook")
 async def remove_webhook(body: RemoveWebhookRequest, session: dict = GitHubAuth):
     """
-    Remove an OpsTronic webhook from a user's repository.
+    Remove an OpsTron webhook from a user's repository.
     """
     github_token = session.get("github_access_token")
     if not github_token:

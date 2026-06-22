@@ -1,4 +1,4 @@
-# OpsTronic — User Flow & Docker Agent Fix (Priority 1)
+# OpsTron — User Flow & Docker Agent Fix (Priority 1)
 
 > Fix the product first. Redis architecture second.
 > A perfect queue means nothing if users can't onboard.
@@ -34,10 +34,10 @@ command: sh -c "pip install requests docker -q && python /app/opstronic_forwarde
 
 This assumes `opstronic_forwarder.py` is on the user's machine. It won't be — they haven't cloned your repo. The curl command also pulls from your GitHub raw URL which is fragile.
 
-**Fix:** Publish `opstronic/agent` to Docker Hub. The snippet becomes:
+**Fix:** Publish `opstron/agent` to Docker Hub. The snippet becomes:
 ```yaml
-opstronic-agent:
-  image: opstronic/agent:latest   ← pulled from Docker Hub, zero files needed
+opstron-agent:
+  image: opstron/agent:latest   ← pulled from Docker Hub, zero files needed
   ...
 ```
 
@@ -73,7 +73,7 @@ After onboarding, the user has no way to know if their agent is still running. D
 ## Open Questions
 
 > [!IMPORTANT]
-> **Do you have a Docker Hub account?** Publishing `opstronic/agent:latest` requires one. If not, you can use GitHub Container Registry (ghcr.io) for free with your existing GitHub account.
+> **Do you have a Docker Hub account?** Publishing `opstron/agent:latest` requires one. If not, you can use GitHub Container Registry (ghcr.io) for free with your existing GitHub account.
 
 > [!IMPORTANT]
 > **Is your backend publicly accessible?** The webhook install sets `active: False` for localhost URLs. For real users, you need a public URL (ngrok for dev, a VPS or Railway for prod). This doesn't need code — just deployment.
@@ -125,7 +125,7 @@ railway up          # deploys, gives you a public URL like:
 - GitHub webhooks will now register as `active: true` and actually fire
 
 > [!NOTE]
-> Railway free tier gives you $5/month of compute — enough for OpsTronic at this stage. For Redis, add a Redis plugin inside the same Railway project (one click).
+> Railway free tier gives you $5/month of compute — enough for OpsTron at this stage. For Redis, add a Redis plugin inside the same Railway project (one click).
 
 ---
 
@@ -134,15 +134,15 @@ railway up          # deploys, gives you a public URL like:
 **File:** `agent/Dockerfile.agent` — **[NEW]**
 
 ```dockerfile
-# OpsTronic Log Forwarding Agent
+# OpsTron Log Forwarding Agent
 # Lightweight container — runs on USER'S machine alongside their services
-# Published to Docker Hub as opstronic/agent:latest
+# Published to Docker Hub as opstron/agent:latest
 
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Only install what the forwarder needs — not the full OpsTronic stack
+# Only install what the forwarder needs — not the full OpsTron stack
 RUN pip install --no-cache-dir docker==7.1.0 requests==2.32.3
 
 COPY opstronic_forwarder.py /app/forwarder.py
@@ -157,17 +157,17 @@ CMD ["python", "/app/forwarder.py"]
 **Build and publish commands:**
 ```bash
 # Build
-docker build -f Dockerfile.agent -t opstronic/agent:latest ./agent
+docker build -f Dockerfile.agent -t opstron/agent:latest ./agent
 
 # Test locally
 docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -e OPSTRONIC_API_KEY=test \
-  -e OPSTRONIC_BACKEND_URL=http://host.docker.internal:8001 \
-  opstronic/agent:latest
+  -e OPSTRON_API_KEY=test \
+  -e OPSTRON_BACKEND_URL=http://host.docker.internal:8001 \
+  opstron/agent:latest
 
 # Publish to Docker Hub
-docker push opstronic/agent:latest
+docker push opstron/agent:latest
 ```
 
 ---
@@ -206,7 +206,7 @@ containers = client.containers.list()
 
 # AFTER (only containers that opted in)
 containers = client.containers.list(
-    filters={"label": "opstronic.monitor=true"}
+    filters={"label": "opstron.monitor=true"}
 )
 ```
 
@@ -215,7 +215,7 @@ User adds to their docker-compose.yml:
 my-api:
   image: my-api:latest
   labels:
-    - "opstronic.monitor=true"   # ← one line to opt in
+    - "opstron.monitor=true"   # ← one line to opt in
 ```
 
 ### Fix C — Add Docker Events stream for crash detection
@@ -238,7 +238,7 @@ def watch_docker_events(client, backend_url, api_key):
             exit_code = attrs.get("exitCode", "unknown")
 
             # Only alert if this container is opted in
-            if attrs.get("opstronic.monitor") != "true":
+            if attrs.get("opstron.monitor") != "true":
                 continue
 
             logger.warning(f"[EVENT] Container {container_name} {action} (exit={exit_code})")
@@ -274,7 +274,7 @@ event_thread.start()
 
 ```python
 def send_heartbeat(backend_url: str, api_key: str):
-    """Tell OpsTronic this agent is alive."""
+    """Tell OpsTron this agent is alive."""
     try:
         requests.post(
             backend_url.replace("/agent/logs/ingest", "/agent/heartbeat"),
@@ -286,7 +286,7 @@ def send_heartbeat(backend_url: str, api_key: str):
             headers={"X-API-Key": api_key},
             timeout=5
         )
-        logger.info("Heartbeat sent to OpsTronic backend")
+        logger.info("Heartbeat sent to OpsTron backend")
     except Exception as e:
         logger.warning(f"Heartbeat failed (backend may not be ready): {e}")
 ```
@@ -449,18 +449,18 @@ Replace the broken docker-compose snippet (which references a local file) with o
 
 ```html
 <!-- Docker Compose snippet — uses Docker Hub image, no file copying -->
-<div class="code-block" id="dc-code">opstronic-agent:
-  image: <span class="kw">opstronic/agent:latest</span>   <span class="cm"># pulled from Docker Hub</span>
+<div class="code-block" id="dc-code">opstron-agent:
+  image: <span class="kw">opstron/agent:latest</span>   <span class="cm"># pulled from Docker Hub</span>
   restart: unless-stopped
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock:ro
   environment:
-    OPSTRONIC_BACKEND_URL: <span class="st">"https://your-opstronic-server/agent/logs/ingest"</span>
-    OPSTRONIC_API_KEY: <span class="st" id="api-key-display">"your_api_key"</span>
+    OPSTRON_BACKEND_URL: <span class="st">"https://your-opstron-server/agent/logs/ingest"</span>
+    OPSTRON_API_KEY: <span class="st" id="api-key-display">"your_api_key"</span>
   <span class="cm"># Label YOUR services to opt them in:</span>
   <span class="cm"># my-api:</span>
   <span class="cm">#   labels:</span>
-  <span class="cm">#     - "opstronic.monitor=true"</span></div>
+  <span class="cm">#     - "opstron.monitor=true"</span></div>
 ```
 
 Also replace the curl snippet (which pulls from GitHub raw) with:
@@ -468,12 +468,12 @@ Also replace the curl snippet (which pulls from GitHub raw) with:
 ```html
 <div class="code-block" id="direct-code"><span class="cm"># Run as a standalone Docker container</span>
 docker run -d \
-  --name opstronic-agent \
+  --name opstron-agent \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -e OPSTRONIC_API_KEY=<span class="st" id="api-key-inline">"your_api_key"</span> \
-  -e OPSTRONIC_BACKEND_URL=<span class="st">"https://your-opstronic-server"</span> \
-  opstronic/agent:latest</div>
+  -e OPSTRON_API_KEY=<span class="st" id="api-key-inline">"your_api_key"</span> \
+  -e OPSTRON_BACKEND_URL=<span class="st">"https://your-opstron-server"</span> \
+  opstron/agent:latest</div>
 ```
 
 **Personalisation:** Inject the user's actual API key into the snippet. Since the user is logged in, fetch it from the session:
@@ -531,7 +531,7 @@ function startHeartbeatPolling() {
                            containers on <code>${data.hostname}</code></p>
                     </div>`;
                 btn.disabled = false;
-                toast('OpsTronic agent is live!', 'success');
+                toast('OpsTron agent is live!', 'success');
                 return;
             }
         } catch (e) { /* backend not ready yet */ }
@@ -541,7 +541,7 @@ function startHeartbeatPolling() {
             statusEl.innerHTML = `
                 <div style="color:var(--warning)">
                     ⚠️ Agent not detected after 60 seconds.
-                    Make sure the container is running and OPSTRONIC_BACKEND_URL is correct.
+                    Make sure the container is running and OPSTRON_BACKEND_URL is correct.
                     <br><br>
                     <button class="btn btn-secondary btn-sm" onclick="startHeartbeatPolling()">
                         Retry Detection
@@ -588,19 +588,19 @@ setInterval(refreshAgentStatus, 30000);
 ## Corrected Full User Flow (After These Changes)
 
 ```
-1. User visits opstronic.io
+1. User visits opstron.io
    → clicks "Login with GitHub" → OAuth → dashboard
 
 2. Onboarding Step 1 — Connect GitHub
    → Repo picker loads their repos (GitHub API via OAuth token)
    → User clicks their repo
-   → "Connect OpsTronic" → webhook installed on their repo automatically
-   → Webhook URL: https://your-opstronic-server/notify-deployment
+   → "Connect OpsTron" → webhook installed on their repo automatically
+   → Webhook URL: https://your-opstron-server/notify-deployment
    → No manual GitHub settings needed ✅
 
 3. Onboarding Step 2 — Connect Docker
    → Page shows two commands (pre-filled with their API key):
-       docker run -d opstronic/agent:latest ...   (standalone)
+       docker run -d opstron/agent:latest ...   (standalone)
        OR add to docker-compose.yml             (existing setup)
    → User runs ONE command on their server
    → Page polls /agent/status every 2 seconds
@@ -630,7 +630,7 @@ You already have `supabase_client.py` and `schema.sql` fully written. You just n
 **File:** `agent/app/db/schema.sql` — **[MODIFY]**
 
 ```sql
--- Table: OpsTronic Users (one row per GitHub user who signs up)
+-- Table: OpsTron Users (one row per GitHub user who signs up)
 CREATE TABLE IF NOT EXISTS opstronic_users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   github_id TEXT NOT NULL UNIQUE,
