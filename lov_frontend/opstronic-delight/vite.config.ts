@@ -12,13 +12,13 @@ export default defineConfig({
   cloudflare: false,
   tanstackStart: {
     router: {
-      basepath: "/OpsTronic",
+      basepath: "/OpsTron",
     },
     prerender: {
       enabled: true,
     },
   },
   vite: {
-    base: isProd ? "/OpsTronic/" : "/",
+    base: isProd ? "/OpsTron/" : "/",
   },
 });

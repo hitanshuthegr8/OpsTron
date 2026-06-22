@@ -1,10 +1,10 @@
 /**
- * OpsTronic Backend API Client
+ * OpsTron Backend API Client
  * All calls go to the deployed FastAPI backend on Render.
  */
 
 export const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://opstronic.onrender.com";
-const APP_BASE = import.meta.env.PROD ? "/OpsTronic" : "";
+const APP_BASE = import.meta.env.PROD ? "/OpsTron" : "";
 
 // ─── Auth token helpers ────────────────────────────────────────────────────
 export const TOKEN_KEY = "ops_token";

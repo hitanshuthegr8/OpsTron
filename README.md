@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:4facfe,100:00f2fe&height=200&section=header&text=OpsTronic&fontSize=90&fontAlignY=38&desc=Your%20AI-Powered%20DevOps%20Companion&descAlignY=55&descAlign=62" width="100%" />
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:4facfe,100:00f2fe&height=200&section=header&text=OpsTron&fontSize=90&fontAlignY=38&desc=Your%20AI-Powered%20DevOps%20Companion&descAlignY=55&descAlign=62" width="100%" />
 
 [![Typing SVG](https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=600&size=24&pause=1000&color=00F2FE&center=true&vCenter=true&width=600&lines=Catch+deployment+regressions;Automate+Root+Cause+Analysis;Resolve+incidents+with+AI;Ship+code+with+confidence)](https://git.io/typing-svg)
 
@@ -16,11 +16,11 @@
 
 <br />
 
-## 🌟 Why OpsTronic?
+## 🌟 Why OpsTron?
 
-Modern microservices are complex, and pinpointing the exact codebase change that caused a production outage can take hours. **OpsTronic cuts that time down to seconds.** 
+Modern microservices are complex, and pinpointing the exact codebase change that caused a production outage can take hours. **OpsTron cuts that time down to seconds.** 
 
-By ingesting real-time application logs, analyzing your latest Git commits, and querying your internal runbooks, OpsTronic's orchestrator synthesizes an exact explanation of *what broke*, *why it broke*, and *how to fix it*. 
+By ingesting real-time application logs, analyzing your latest Git commits, and querying your internal runbooks, OpsTron's orchestrator synthesizes an exact explanation of *what broke*, *why it broke*, and *how to fix it*. 
 
 ---
 
@@ -30,7 +30,7 @@ By ingesting real-time application logs, analyzing your latest Git commits, and 
   <tr>
     <td width="50%">
       <h3>🛡️ Deployment Protection</h3>
-      <p>Seamlessly integrates with GitHub Actions via secure HMAC webhooks. OpsTronic automatically enters "Watch Mode" during a deployment to catch immediate regressions.</p>
+      <p>Seamlessly integrates with GitHub Actions via secure HMAC webhooks. OpsTron automatically enters "Watch Mode" during a deployment to catch immediate regressions.</p>
     </td>
     <td width="50%">
       <h3>🧠 AI Root Cause Analysis</h3>
@@ -44,7 +44,7 @@ By ingesting real-time application logs, analyzing your latest Git commits, and 
     </td>
     <td width="50%">
       <h3>📞 Critical Voice Alerts</h3>
-      <p>When a deployment drops the database, emails aren't enough. OpsTronic integrates with Twilio TwiML to physically call on-call engineers for critical regressions.</p>
+      <p>When a deployment drops the database, emails aren't enough. OpsTron integrates with Twilio TwiML to physically call on-call engineers for critical regressions.</p>
     </td>
   </tr>
 </table>
@@ -115,12 +115,12 @@ graph TD
 
 ## 🚀 Quickstart Guide
 
-Get OpsTronic running locally in under 60 seconds.
+Get OpsTron running locally in under 60 seconds.
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/Himanhuthegr8/OpsTronic.git
-cd OpsTronic/agent
+git clone https://github.com/hitanshuthegr8/OpsTron.git
+cd OpsTron/agent
 python -m venv venv
 source venv/bin/activate  # On Windows use: venv\Scripts\activate
 pip install -r requirements.txt
@@ -137,13 +137,13 @@ GEMINI_API_KEY="your_groq_or_gemini_key"
 ```bash
 python main.py
 ```
-*OpsTronic is now listening on port `8001`.*
+*OpsTron is now listening on port `8001`.*
 
 ---
 
 ## 🔒 Securing Your Deployments (GitHub Actions)
 
-To enable Deployment Protection, you need to tell GitHub to securely ping OpsTronic when a push happens.
+To enable Deployment Protection, you need to tell GitHub to securely ping OpsTron when a push happens.
 
 1. Generate a secure secret: `openssl rand -hex 32`
 2. Add this secret to your `agent/.env` as `WEBHOOK_SECRET="your_secret"`.
@@ -157,7 +157,7 @@ The included workflow (`.github/workflows/opstronic_notify.yml`) will now automa
 
 ## 🐳 Ingesting Docker Logs
 
-You don't need to expose your Docker daemon. OpsTronic uses a secure push-based model.
+You don't need to expose your Docker daemon. OpsTron uses a secure push-based model.
 
 Run the lightweight forwarder script alongside your production apps:
 ```bash
@@ -185,6 +185,6 @@ python agent/opstronic_forwarder.py
 ---
 
 <div align="center">
-  <h3>Built with ❤️ by the OpsTronic Team</h3>
+  <h3>Built with ❤️ by the OpsTron Team</h3>
   <p>If you like this project, consider giving it a ⭐ on GitHub!</p>
 </div>
