@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useMemo, useCallback } from "react";
+import type { ComponentType, FormEvent, ReactNode } from "react";
 import {
   AlertTriangle, Activity, Search, Filter, CheckCircle2,
   XCircle, Clock, TrendingUp, Upload, FileText, Send, RefreshCw,
@@ -345,7 +346,7 @@ function DetailStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-2">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
@@ -639,7 +640,7 @@ function TestErrors() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!service.trim() || !message.trim()) return;
     setSending(true);
@@ -710,7 +711,7 @@ function TestErrors() {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function Stat({ label, value, icon: Icon, tone }: {
   label: string; value: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   tone: "warning" | "destructive" | "info" | "success";
 }) {
   const toneCls: Record<typeof tone, string> = {

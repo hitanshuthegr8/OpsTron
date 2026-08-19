@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import type { ComponentType } from "react";
 import { Github, Activity, ShieldCheck, Zap, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appPath, redirectToGitHubOAuth } from "@/lib/api";
@@ -199,7 +200,7 @@ function Feature({
   title,
   desc,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   title: string;
   desc: string;
 }) {

@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { Copy, Eye, EyeOff, RefreshCw, Save, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -77,7 +78,7 @@ function SettingsPage() {
   );
 }
 
-function Card({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
+function Card({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
   return (
     <section className="rounded-xl border border-border bg-card/60 shadow-[var(--shadow-elegant)]">
       <div className="border-b border-border px-6 py-4">
