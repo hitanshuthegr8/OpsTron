@@ -2,9 +2,9 @@
 LLM Client — Groq via LangChain
 
 All AI inference in OpsTron goes through this single client.
-Currently uses Groq's `llama-3.3-70b-versatile` model for speed and quality.
+The model is set by the `GROQ_MODEL` env var (default: `openai/gpt-oss-120b`).
 
-To swap models: change `model_name` in `_init_groq()`.
+To swap models: set `GROQ_MODEL` in .env — no code change needed.
 To add a new provider: add a new `_init_<provider>()` method and call it in `__init__`.
 """
 
@@ -27,7 +27,7 @@ class LLMClient:
         try:
             from langchain_groq import ChatGroq
             return ChatGroq(
-                model_name="llama-3.3-70b-versatile",
+                model_name=settings.GROQ_MODEL,
                 api_key=settings.GROQ_API_KEY,
                 temperature=0,
                 max_tokens=4000,
