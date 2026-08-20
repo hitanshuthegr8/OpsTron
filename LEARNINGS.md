@@ -264,3 +264,35 @@ been indefensible under "how did you measure it?"
 > weights) or that you actually benchmarked under stated conditions. A number you cannot
 > reproduce on demand is a liability, not an achievement — it invites exactly the question
 > you cannot answer.
+
+---
+
+## 16. Choices vs results — which numbers actually count
+
+Most "metrics" on a project are **design choices**, not outcomes:
+
+| Choice (you decided it) | Result (you measured it) |
+|---|---|
+| 5 confidence signals | 92% retrieval precision@1 |
+| 60-second dedup window | 22:1 event collapse under storm |
+| 28 API endpoints | 231 of 242 events suppressed |
+| 5 severity levels | 120 pages reduced to 3 |
+
+Both belong on a resume, but they answer different questions. A choice shows you designed a
+system. A **result** shows the design worked. Only the second survives "so did it actually
+help?"
+
+Measured on this project:
+
+- **Runbook retrieval precision@1: 92% (11/12).** Twelve realistic incident phrasings, each
+  with a known-correct runbook. The single miss — "502 bad gateway, no healthy upstreams"
+  matched *api_timeout* instead of *service_down* — is genuinely ambiguous, which is a more
+  honest answer than a suspicious 100%.
+- **Event storm collapse: 22:1.** 242 raw events from three crashlooping containers reduced
+  to 11 reaching the RCA layer — 95.5% suppressed.
+- **Alert fatigue: 120 pages down to 3**, via the 5-minute per-service cooldown.
+
+> **Rule:** design a small evaluation you can re-run on demand. Twelve hand-labelled queries
+> took ten minutes to write and turned an unverifiable claim into a defensible one. And keep
+> the miss in the number — a reported 100% invites doubt, while 92% with an explained failure
+> invites a conversation you can win.
