@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     # Agent Configuration
     # ==========================================================================
     AGENT_URL: str = "http://localhost:8001"
+    # Publicly reachable base URL for this backend (e.g. an ngrok or deployed
+    # host). GitHub must be able to reach it to deliver webhooks. When set, it
+    # overrides whatever callback URL a client proposes.
+    PUBLIC_URL: str = ""
     DEPLOYMENT_WATCH_MINUTES: int = 5
     MAX_LOG_CHARS: int = 30000
     INCIDENT_RCA_COOLDOWN_MINUTES: int = 15
