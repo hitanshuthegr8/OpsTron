@@ -9,6 +9,10 @@ const APP_BASE = import.meta.env.PROD ? "/OpsTron" : "";
 // ─── Auth token helpers ────────────────────────────────────────────────────
 export const TOKEN_KEY = "ops_token";
 export const AGENT_KEY = "ops_agent_key";
+// Persisted app state (includes the cached user). Declared here so clearAuth
+// can drop it too -- a cached user outliving its token sends the login route
+// into a redirect loop.
+export const STATE_KEY = "opstronic:state:v2";
 
 export function appPath(path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
@@ -29,6 +33,9 @@ export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(AGENT_KEY);
   localStorage.removeItem("ops_connected_repo");
+  // Drop the cached user as well. Without this the session looks dead to the
+  // API but alive to the router, which bounces /login -> /onboarding forever.
+  localStorage.removeItem(STATE_KEY);
 }
 
 // ─── Base fetch helper ─────────────────────────────────────────────────────
