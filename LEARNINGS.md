@@ -215,3 +215,52 @@ the key's shape and one DNS lookup:
 > **Habit:** when a credential is rejected, check its *format* against what the client expects,
 > and confirm the host actually resolves. "Invalid API key" can mean wrong key, wrong format,
 > or vanished project — three different fixes.
+
+---
+
+## 14. Ephemeral filesystems: "it persisted locally" is not persistence
+
+Runbooks were indexed into ChromaDB on disk at `./db/chroma_data`. That worked locally
+forever, because a laptop's disk survives the process. On Render it silently did not:
+
+- Nothing ran the indexer at deploy time, so the store started **empty**.
+- Even indexing it once by hand would not have stuck — hosted containers (Render, Railway,
+  Heroku, most PaaS) have **ephemeral filesystems**. Anything written at runtime is gone on
+  the next deploy, restart, or spin-down.
+
+The result: RAG worked perfectly in development and was completely hollow in production.
+Every RCA shipped without its remediation step, and nothing errored.
+
+**The fix** was to rebuild the index during application startup, in the `lifespan` hook —
+cheap for a small fixed set of documents, and it removes the dependency on disk outliving
+the process entirely.
+
+> **Rule:** on a hosted container, treat the filesystem as scratch space that vanishes.
+> Anything that must survive belongs in a database, an object store, or gets rebuilt at boot
+> from something in the image.
+
+There is a wider lesson here too. This bug could only appear **in production**, because it
+was caused by an environment difference, not by the code. Dev and prod differ in filesystem
+persistence, available CPU, cold starts, network reachability, and installed wheels — and
+every one of those has bitten this project at least once.
+
+---
+
+## 15. Measure before you claim a number
+
+Latency looked like a great resume metric until it was measured three times in a row:
+
+```
+run 1:  8.4s
+run 2: 38.3s
+run 3: 53.0s
+```
+
+Same input, same endpoint, a 6x spread — free-tier CPU contention stacked on top of LLM
+inference variance and two external API calls. Any single number picked from that would have
+been indefensible under "how did you measure it?"
+
+> **Rule:** quote numbers that are *structural* (endpoint counts, pipeline stages, scoring
+> weights) or that you actually benchmarked under stated conditions. A number you cannot
+> reproduce on demand is a liability, not an achievement — it invites exactly the question
+> you cannot answer.
