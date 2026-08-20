@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
+import type { ReactNode } from "react";
 import {
   GitBranch,
   Container,
@@ -569,7 +570,7 @@ function Header({ title, desc }: { title: string; desc: string }) {
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
     <div>
       <Label className="mb-1.5 block text-sm">{label}</Label>

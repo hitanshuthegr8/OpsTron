@@ -141,6 +141,13 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
             detail="No GitHub access token in session. Please log in again."
         )
 
+    # The server is authoritative about its own address: a browser on localhost
+    # cannot know the public URL GitHub needs to reach us. PUBLIC_URL wins when set.
+    webhook_url = body.webhook_url
+    if settings.PUBLIC_URL:
+        webhook_url = f"{settings.PUBLIC_URL.rstrip('/')}/notify-deployment"
+        logger.info(f"Using configured PUBLIC_URL for webhook target: {webhook_url}")
+
     # First check if a webhook from us already exists to avoid duplicates
     async with httpx.AsyncClient() as client:
         existing = await client.get(
@@ -154,7 +161,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
 
     if existing.status_code == 200:
         for hook in existing.json():
-            if hook.get("config", {}).get("url") == body.webhook_url:
+            if hook.get("config", {}).get("url") == webhook_url:
                 logger.info(f"Webhook already exists on {body.owner}/{body.repo} (id={hook['id']})")
                 async with httpx.AsyncClient() as client:
                     update = await client.patch(
@@ -162,7 +169,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
                         json={
                             "active": True,
                             "events": ["push"],
-                            "config": _webhook_config(body.webhook_url),
+                            "config": _webhook_config(webhook_url),
                         },
                         headers={
                             "Authorization": f"Bearer {github_token}",
@@ -201,7 +208,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
                 "name": "web",
                 "active": True,
                 "events": ["push"],
-                "config": _webhook_config(body.webhook_url),
+                "config": _webhook_config(webhook_url),
             },
             headers={
                 "Authorization": f"Bearer {github_token}",
@@ -218,7 +225,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
         # Provide a friendlier message for common validation failures
         if message == "Validation Failed":
             url_errors = [e for e in errors if e.get("field") == "url"]
-            if url_errors or body.webhook_url.startswith("http://localhost"):
+            if url_errors or webhook_url.startswith("http://localhost"):
                 message = (
                     "GitHub cannot reach your backend URL (localhost is not publicly accessible). "
                     "The webhook was registered as inactive. Use a public URL (e.g. via ngrok) "
