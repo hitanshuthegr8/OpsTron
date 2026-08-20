@@ -44,12 +44,13 @@ def load_runbooks():
     
     if not documents:
         logger.error("No runbook documents found!")
-        return
-    
+        return 0
+
     store = ChromaStore()
     store.add_documents(documents)
-    
+
     logger.info(f"Successfully loaded {len(documents)} runbooks into ChromaDB")
+    return len(documents)
 
 
 if __name__ == "__main__":
