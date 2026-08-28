@@ -115,8 +115,12 @@ class Settings(BaseSettings):
             for origin in self.CORS_ALLOWED_ORIGINS.split(",")
             if origin.strip()
         ]
+        # FRONTEND_URL is always trusted, never merely a fallback. It is where
+        # the OAuth callback redirects the browser, so a deployment that sets
+        # CORS_ALLOWED_ORIGINS would otherwise silently stop trusting the very
+        # origin it sends users back to.
         frontend = normalize_origin(self.FRONTEND_URL)
-        origins = configured or [frontend]
+        origins = [*configured, frontend] if frontend else list(configured)
         if not self.is_production():
             origins.extend([
                 "http://localhost:5173",
