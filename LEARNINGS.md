@@ -296,3 +296,63 @@ Measured on this project:
 > took ten minutes to write and turned an unverifiable claim into a defensible one. And keep
 > the miss in the number — a reported 100% invites doubt, while 92% with an explained failure
 > invites a conversation you can win.
+
+---
+
+## 17. A pinned version is a bet on a platform, not just a number
+
+`chromadb==0.4.24` is a perfectly valid pin that cannot be installed on this machine.
+It depends on `chroma-hnswlib`, which ships no prebuilt wheel for Python 3.12 on Windows,
+so pip falls back to compiling from source and needs an MSVC toolchain that isn't there.
+The pin didn't break — the *platform coverage behind it* did.
+
+The tell: the failure is in a transitive dependency you never chose, during a build step
+rather than a resolve step. Nothing about `0.4.24` is wrong; it is simply older than the
+Python version being used, and wheel availability is a property of time, not correctness.
+
+> **Rule:** an exact pin freezes the dependency *and* the set of platforms that dependency
+> was built for. When a pin fails to install, check whether a wheel exists for your
+> interpreter and OS before assuming the package is broken. Pin ranges (`>=1.0`) for
+> anything with compiled extensions unless you control the build environment.
+
+---
+
+## 18. Silent fallbacks turn one config into two
+
+The backend allowlisted CORS origins on ports 5173 and 3000. Vite's dev server defaults to
+8080 — and when 8080 is taken it prints one grey line and quietly serves on 8081 instead.
+The frontend then loaded perfectly and every single API call failed, because the browser
+saw an origin the server had never heard of.
+
+Two independent things had to agree (the port Vite picked, the port the backend trusted),
+and only one of them was allowed to change at runtime. The symptom appears in the browser,
+the cause is in the server config, and neither logs an error — the server never sees the
+blocked request at all.
+
+The fix wasn't to add 8081 to the list. It was to stop enumerating: in non-production,
+allow any `localhost` port by regex, and keep the strict allowlist for production only.
+
+> **Rule:** when a value can be chosen dynamically at runtime, never hardcode the same value
+> somewhere else. Either derive it from one source, or widen the check in the environment
+> where the variance is harmless. Enumerating known-good values is a bug waiting for the
+> next port collision.
+
+---
+
+## 19. "Push my changes over there" is a claim about history, not files
+
+Syncing this fork to the other repo looked like a one-line force-push. Checking first showed
+the opposite of the assumption: the *destination* was ten commits ahead, carrying this very
+file, the startup runbook indexing, and a webhook fix. The source had two commits worth
+keeping. A force-push would have destroyed more than it delivered.
+
+Worse, two of the four fixes on the source side had already been solved better upstream —
+the runbook loader there returns a count that startup indexing depends on. Overwriting with
+the "newer" local version would have silently broken a feature that worked.
+
+`git merge-base`, then `git log A ^B` in *both* directions, answers this in ten seconds.
+
+> **Rule:** before syncing two diverged copies, list what each has that the other doesn't —
+> both directions. "Mine is newer" is an assumption about time; what matters is content.
+> And resolve conflicts by which side is *stronger*, not by which side is yours: `--ours`
+> on a whole file silently discards every other change the other side made to it.
