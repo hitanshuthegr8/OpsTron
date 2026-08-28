@@ -34,7 +34,8 @@ jobs:
         run: npm run build
         working-directory: lov_frontend/opstronic-delight
         env:
-          VITE_BACKEND_URL: https://opstronic.onrender.com
+          # Set this repository secret to your deployed Render/FastAPI backend URL.
+          VITE_BACKEND_URL: ${{ secrets.OPSTRON_BACKEND_URL }}
 
       - name: Create GitHub Pages index fallback
         run: |

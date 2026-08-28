@@ -1,5 +1,5 @@
 """
-OpsTronic structured event processing pipeline.
+OpsTron structured event processing pipeline.
 """
 
 import asyncio
@@ -248,7 +248,7 @@ class EventEngine:
 
         root_cause = (rca_report or {}).get("root_cause", "an incident that needs attention")
         message = (
-            f"OpsTronic alert. A critical event was detected in {event.service_name} "
+            f"OpsTron alert. A critical event was detected in {event.service_name} "
             f"after a deployment. Root cause summary: {root_cause}. "
             f"Please check your dashboard."
         )

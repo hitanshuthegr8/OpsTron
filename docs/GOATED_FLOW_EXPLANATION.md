@@ -1,6 +1,6 @@
-# OpsTronic Goated Flow Explanation
+# OpsTron Goated Flow Explanation
 
-This document explains the full OpsTronic journey from the user's first login all the way to:
+This document explains the full OpsTron journey from the user's first login all the way to:
 
 - onboarding
 - the commands the user runs
@@ -17,27 +17,27 @@ It is written to give both:
 
 The main code paths referenced here are:
 
-- [agent/main.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/main.py)
-- [agent/app/api/routes/auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/routes/auth.py)
-- [agent/app/api/routes/ingest.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/routes/ingest.py)
-- [agent/app/core/orchestrator.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/orchestrator.py)
-- [agent/app/core/event_engine.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/event_engine.py)
-- [agent/app/core/watch_manager.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/watch_manager.py)
-- [agent/app/api/middleware/auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/middleware/auth.py)
-- [agent/app/db/supabase_client.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/db/supabase_client.py)
-- [agent/opstronic_forwarder.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/opstronic_forwarder.py)
-- [lov_frontend/opstronic-delight/src/routes/__root.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/__root.tsx)
-- [lov_frontend/opstronic-delight/src/routes/login.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/login.tsx)
-- [lov_frontend/opstronic-delight/src/routes/onboarding.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/onboarding.tsx)
-- [lov_frontend/opstronic-delight/src/routes/dashboard.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/dashboard.tsx)
-- [lov_frontend/opstronic-delight/src/lib/opstronic-store.ts](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/lib/opstronic-store.ts)
-- [lov_frontend/opstronic-delight/src/lib/api.ts](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/lib/api.ts)
+- [agent/main.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/main.py)
+- [agent/app/api/routes/auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/routes/auth.py)
+- [agent/app/api/routes/ingest.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/routes/ingest.py)
+- [agent/app/core/orchestrator.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/orchestrator.py)
+- [agent/app/core/event_engine.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/event_engine.py)
+- [agent/app/core/watch_manager.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/watch_manager.py)
+- [agent/app/api/middleware/auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/middleware/auth.py)
+- [agent/app/db/supabase_client.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/db/supabase_client.py)
+- [agent/opstronic_forwarder.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/opstronic_forwarder.py)
+- [lov_frontend/opstronic-delight/src/routes/__root.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/__root.tsx)
+- [lov_frontend/opstronic-delight/src/routes/login.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/login.tsx)
+- [lov_frontend/opstronic-delight/src/routes/onboarding.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/onboarding.tsx)
+- [lov_frontend/opstronic-delight/src/routes/dashboard.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/dashboard.tsx)
+- [lov_frontend/opstronic-delight/src/lib/opstronic-store.ts](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/lib/opstronic-store.ts)
+- [lov_frontend/opstronic-delight/src/lib/api.ts](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/lib/api.ts)
 
 ---
 
 ## 1. Big Picture
 
-OpsTronic is made of two major parts:
+OpsTron is made of two major parts:
 
 1. Frontend dashboard
    - React + TanStack Router
@@ -86,8 +86,8 @@ The user journey is:
 10. Agent starts sending heartbeat and log/crash events.
 11. User finishes alert settings.
 12. User reaches dashboard.
-13. During later deploys, GitHub push webhook puts OpsTronic into watch mode.
-14. If errors/crashes happen, OpsTronic correlates them to that watch window.
+13. During later deploys, GitHub push webhook puts OpsTron into watch mode.
+14. If errors/crashes happen, OpsTron correlates them to that watch window.
 15. RCA is generated, stored, and possibly escalated by phone.
 
 ---
@@ -96,7 +96,7 @@ The user journey is:
 
 ### 3.1 App entry and route decision
 
-Frontend root route logic lives in [__root.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/__root.tsx).
+Frontend root route logic lives in [__root.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/__root.tsx).
 
 What it does on load:
 
@@ -126,10 +126,10 @@ The app basically uses these rules:
 
 This behavior is spread across:
 
-- [index.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/index.tsx)
-- [login.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/login.tsx)
-- [onboarding.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/onboarding.tsx)
-- [AppShell.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/components/AppShell.tsx)
+- [index.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/index.tsx)
+- [login.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/login.tsx)
+- [onboarding.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/onboarding.tsx)
+- [AppShell.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/components/AppShell.tsx)
 
 ---
 
@@ -137,7 +137,7 @@ This behavior is spread across:
 
 ### 4.1 What the user sees
 
-On [login.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/login.tsx), the user clicks "Continue with GitHub".
+On [login.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/login.tsx), the user clicks "Continue with GitHub".
 
 That triggers:
 
@@ -148,7 +148,7 @@ That triggers:
 
 Backend route:
 
-- [auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/routes/auth.py) -> `GET /auth/github/login`
+- [auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/routes/auth.py) -> `GET /auth/github/login`
 
 This route:
 
@@ -171,9 +171,9 @@ Backend callback flow:
 1. exchange code for GitHub access token
 2. call GitHub `/user`
 3. get GitHub profile
-4. look up existing OpsTronic user in Supabase
+4. look up existing OpsTron user in Supabase
 5. reuse old `agent_api_key` if the user already exists
-6. create a new OpsTronic session token
+6. create a new OpsTron session token
 7. persist:
    - user
    - GitHub token
@@ -192,15 +192,15 @@ So the backend intentionally tries to reuse the old `agent_api_key` from Supabas
 
 That behavior lives in:
 
-- [auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/routes/auth.py)
-- [supabase_client.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/db/supabase_client.py)
+- [auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/routes/auth.py)
+- [supabase_client.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/db/supabase_client.py)
 
 ### 4.5 Session storage model
 
 There are two session layers:
 
 1. in-memory session cache
-   - `active_sessions` in [auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/middleware/auth.py)
+   - `active_sessions` in [auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/middleware/auth.py)
 
 2. persistent session storage
    - `session_token` stored in Supabase
@@ -223,7 +223,7 @@ That is the main crash-safe session recovery behavior.
 
 ## 5. Onboarding Flow
 
-Onboarding is implemented in [onboarding.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/onboarding.tsx).
+Onboarding is implemented in [onboarding.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/onboarding.tsx).
 
 There are three steps:
 
@@ -240,7 +240,7 @@ Frontend calls:
 
 These are implemented in:
 
-- [integrations.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/routes/integrations.py)
+- [integrations.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/routes/integrations.py)
 
 #### Repo list flow
 
@@ -276,8 +276,8 @@ The UI shows:
 
 The key values injected into those snippets are:
 
-- `OPSTRONIC_API_KEY`
-- `OPSTRONIC_BACKEND_URL`
+- `OPSTRON_API_KEY`
+- `OPSTRON_BACKEND_URL`
 
 The frontend gets the key from the authenticated user object returned by `/auth/me`.
 
@@ -285,13 +285,13 @@ The monitored service must opt in with:
 
 ```yaml
 labels:
-  opstronic.monitor: "true"
+  opstron.monitor: "true"
 ```
 
 or:
 
 ```bash
-docker run --label opstronic.monitor=true ...
+docker run --label opstron.monitor=true ...
 ```
 
 This label matters because the agent only watches containers with that label.
@@ -326,12 +326,12 @@ From the user's perspective, the critical commands are the agent setup commands.
 The user adds something like:
 
 ```yaml
-opstronic-agent:
-  image: opstronic/agent:latest
+opstron-agent:
+  image: opstron/agent:latest
   restart: unless-stopped
   environment:
-    OPSTRONIC_API_KEY: "..."
-    OPSTRONIC_BACKEND_URL: "https://..."
+    OPSTRON_API_KEY: "..."
+    OPSTRON_BACKEND_URL: "https://..."
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock:ro
 ```
@@ -340,7 +340,7 @@ And on their app service:
 
 ```yaml
 labels:
-  opstronic.monitor: "true"
+  opstron.monitor: "true"
 ```
 
 ### 6.2 Single container path
@@ -349,18 +349,18 @@ The user runs something like:
 
 ```bash
 docker run -d \
-  -e OPSTRONIC_API_KEY="..." \
-  -e OPSTRONIC_BACKEND_URL="..." \
+  -e OPSTRON_API_KEY="..." \
+  -e OPSTRON_BACKEND_URL="..." \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  --name opstronic-agent \
+  --name opstron-agent \
   --restart unless-stopped \
-  opstronic/agent:latest
+  opstron/agent:latest
 ```
 
 Then they ensure their application container has:
 
 ```bash
---label opstronic.monitor=true
+--label opstron.monitor=true
 ```
 
 ### 6.3 Why the Docker socket is mounted
@@ -372,21 +372,21 @@ The agent needs read access to:
 - inspect restart count/image hash
 - subscribe to Docker events
 
-It does not use this to mutate containers. The code is intentionally read-only in [opstronic_forwarder.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/opstronic_forwarder.py).
+It does not use this to mutate containers. The code is intentionally read-only in [opstronic_forwarder.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/opstronic_forwarder.py).
 
 ---
 
 ## 7. What Happens Right After Agent Starts
 
-This flow is implemented in [opstronic_forwarder.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/opstronic_forwarder.py).
+This flow is implemented in [opstronic_forwarder.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/opstronic_forwarder.py).
 
 ### 7.1 Startup sequence
 
 When the agent process starts:
 
 1. read environment variables
-   - `OPSTRONIC_API_KEY`
-   - `OPSTRONIC_BACKEND_URL`
+   - `OPSTRON_API_KEY`
+   - `OPSTRON_BACKEND_URL`
    - optional poll interval/label settings
 2. connect to Docker via `docker.from_env()`
 3. send initial heartbeat
@@ -438,7 +438,7 @@ Once the agent is running, there are two parallel monitoring mechanisms.
 
 The agent periodically:
 
-1. lists only containers with `opstronic.monitor=true`
+1. lists only containers with `opstron.monitor=true`
 2. for each container:
    - fetch only new log lines since the last successful send
    - or bootstrap with last 50 lines if first time seen
@@ -472,7 +472,7 @@ When such an event happens:
 
 If `/agent/events` is not available, it can fall back to legacy log ingest.
 
-This means OpsTronic has:
+This means OpsTron has:
 
 - slow-path continuous visibility through log polling
 - fast-path immediate visibility through Docker event stream
@@ -489,7 +489,7 @@ When the connected repo receives a push:
 
 - GitHub sends a webhook to `/notify-deployment`
 
-Route lives in [ingest.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/routes/ingest.py).
+Route lives in [ingest.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/routes/ingest.py).
 
 ### 9.2 Webhook authentication
 
@@ -528,7 +528,7 @@ It means:
 - "a deployment just happened"
 - "if bad events happen for this service soon after, they may be regressions"
 
-The newer watch mode is managed by [watch_manager.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/watch_manager.py).
+The newer watch mode is managed by [watch_manager.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/watch_manager.py).
 
 Each watch contains:
 
@@ -580,7 +580,7 @@ So `/agent/logs/ingest` is really a translator:
 
 ### 10.2 Event engine enrichment
 
-In [event_engine.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/event_engine.py), the event is enriched:
+In [event_engine.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/event_engine.py), the event is enriched:
 
 1. normalize service name
 2. normalize timestamp
@@ -631,7 +631,7 @@ For `log_error`:
 
 This is important:
 
-OpsTronic currently treats deployment-time errors as especially worthy of RCA escalation.
+OpsTron currently treats deployment-time errors as especially worthy of RCA escalation.
 
 ### 10.6 RCA execution
 
@@ -700,7 +700,7 @@ Same watch-mode lookup happens.
 If the crash happens during a deployment watch for that service:
 
 - confidence likely increases
-- reasons explain why OpsTronic thinks this is deployment-related
+- reasons explain why OpsTron thinks this is deployment-related
 
 ### 11.5 RCA trigger
 
@@ -724,7 +724,7 @@ Voice alert only happens if all of these are true:
 
 Phone alert is generated by:
 
-- [twilio_service.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/services/twilio_service.py)
+- [twilio_service.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/services/twilio_service.py)
 
 The message spoken on the call is based on the RCA root cause summary.
 
@@ -787,7 +787,7 @@ This is why the project currently has two incident-processing styles:
 
 ## 13. RCA Pipeline in Technical Detail
 
-The RCA pipeline lives in [orchestrator.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/orchestrator.py).
+The RCA pipeline lives in [orchestrator.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/orchestrator.py).
 
 It runs four agents.
 
@@ -795,7 +795,7 @@ It runs four agents.
 
 File:
 
-- [log_agent.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/agents/log_agent.py)
+- [log_agent.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/agents/log_agent.py)
 
 Behavior:
 
@@ -814,7 +814,7 @@ This is token-saving and tries to avoid sending huge useless logs to the model.
 
 File:
 
-- [commit_agent.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/agents/commit_agent.py)
+- [commit_agent.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/agents/commit_agent.py)
 
 Behavior:
 
@@ -832,7 +832,7 @@ If commit fetch fails, the pipeline continues with an empty commit set.
 
 File:
 
-- [runbook_agent.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/agents/runbook_agent.py)
+- [runbook_agent.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/agents/runbook_agent.py)
 
 Behavior:
 
@@ -846,7 +846,7 @@ Runbook search degrades gracefully if Chroma is unavailable.
 
 File:
 
-- [synthesizer_agent.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/agents/synthesizer_agent.py)
+- [synthesizer_agent.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/agents/synthesizer_agent.py)
 
 Behavior:
 
@@ -873,7 +873,7 @@ The deployment regression prompt is more opinionated and asks for:
 
 ### 13.5 LLM backend
 
-All model calls go through [llm.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/llm.py).
+All model calls go through [llm.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/llm.py).
 
 Current implementation:
 
@@ -893,7 +893,7 @@ So the entire system heavily depends on the model returning usable JSON.
 
 ## 14. Persistence Model
 
-Persistence is wrapped in [supabase_client.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/db/supabase_client.py).
+Persistence is wrapped in [supabase_client.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/db/supabase_client.py).
 
 Supabase is used for:
 
@@ -1008,7 +1008,7 @@ If the user's app container restarts and it is monitored:
 4. backend may trigger RCA
 5. if restart count grows and patterns continue, severity may rise
 
-### 15.5 OpsTronic losing watch mode during restart
+### 15.5 OpsTron losing watch mode during restart
 
 This is a subtle issue.
 
@@ -1130,7 +1130,7 @@ If you want the shortest possible "movie" of the whole system, it is this:
 2. Backend creates/reuses user, API key, and session.
 3. Frontend stores token and sends user to onboarding.
 4. User connects repo, which installs GitHub push webhook.
-5. User runs Docker agent with OpsTronic API key.
+5. User runs Docker agent with OpsTron API key.
 6. Agent sends heartbeat and starts watching opted-in containers.
 7. Dashboard starts showing agent status and RCA history.
 8. On every deploy, GitHub push creates a short watch window for the mapped service.
@@ -1149,14 +1149,14 @@ If you want the shortest possible "movie" of the whole system, it is this:
 
 If you want to continue understanding the codebase in the best order, read these next:
 
-1. [agent/app/api/routes/auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/routes/auth.py)
-2. [lov_frontend/opstronic-delight/src/routes/__root.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/__root.tsx)
-3. [lov_frontend/opstronic-delight/src/routes/onboarding.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/lov_frontend/opstronic-delight/src/routes/onboarding.tsx)
-4. [agent/opstronic_forwarder.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/opstronic_forwarder.py)
-5. [agent/app/api/routes/ingest.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/api/routes/ingest.py)
-6. [agent/app/core/event_engine.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/event_engine.py)
-7. [agent/app/core/orchestrator.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/core/orchestrator.py)
-8. [agent/app/db/supabase_client.py](C:/Users/HP/Desktop/Secret/Project/OpsTronic/OpsTronic/agent/app/db/supabase_client.py)
+1. [agent/app/api/routes/auth.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/routes/auth.py)
+2. [lov_frontend/opstronic-delight/src/routes/__root.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/__root.tsx)
+3. [lov_frontend/opstronic-delight/src/routes/onboarding.tsx](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/lov_frontend/opstronic-delight/src/routes/onboarding.tsx)
+4. [agent/opstronic_forwarder.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/opstronic_forwarder.py)
+5. [agent/app/api/routes/ingest.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/api/routes/ingest.py)
+6. [agent/app/core/event_engine.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/event_engine.py)
+7. [agent/app/core/orchestrator.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/core/orchestrator.py)
+8. [agent/app/db/supabase_client.py](C:/Users/HP/Desktop/Secret/Project/OpsTron/OpsTron/agent/app/db/supabase_client.py)
 
 That order follows the real runtime flow pretty well.
 

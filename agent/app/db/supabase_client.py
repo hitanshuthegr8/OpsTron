@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class SupabaseClient:
     """
-    Supabase client wrapper for OpsTronic.
+    Supabase client wrapper for OpsTron.
     
     Provides methods for:
     - Database CRUD operations

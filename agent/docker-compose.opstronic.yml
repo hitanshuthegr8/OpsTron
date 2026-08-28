@@ -1,37 +1,37 @@
 # ============================================================================
-# OpsTronic Agent — Drop this file into your project
+# OpsTron Agent — Drop this file into your project
 # ============================================================================
 #
 # SETUP (one time):
-#   1. Log in at https://opstronic.onrender.com/auth/github/login
+#   1. Log in at https://YOUR_BACKEND_URL/auth/github/login
 #   2. Copy your API key from the dashboard
-#   3. Set OPSTRONIC_API_KEY below (or export it as an env var)
+#   3. Set OPSTRON_API_KEY below (or export it as an env var)
 #   4. Run: docker compose -f docker-compose.opstronic.yml up -d
 #
 # OPT YOUR CONTAINERS IN:
-#   Add this label to any service you want OpsTronic to monitor:
+#   Add this label to any service you want OpsTron to monitor:
 #
 #     labels:
-#       opstronic.monitor: "true"
+#       opstron.monitor: "true"
 #
-# That's it. OpsTronic will automatically detect errors and trigger RCA.
+# That's it. OpsTron will automatically detect errors and trigger RCA.
 # ============================================================================
 
 services:
-  opstronic-agent:
-    image: Himanhuthegr8/opstronic-agent:latest
-    container_name: opstronic-agent
+  opstron-agent:
+    image: opstron/agent:latest
+    container_name: opstron-agent
     restart: unless-stopped
 
     environment:
-      # ✅ Required — get this from https://opstronic.onrender.com after login
-      OPSTRONIC_API_KEY: "${OPSTRONIC_API_KEY}"
+      # ✅ Required — get this from https://YOUR_BACKEND_URL after login
+      OPSTRON_API_KEY: "${OPSTRON_API_KEY}"
 
-      # OpsTronic backend URL (don't change unless self-hosting)
-      OPSTRONIC_BACKEND_URL: "https://opstronic.onrender.com"
+      # Required: your deployed OpsTron backend URL, e.g. https://your-service.onrender.com
+      OPSTRON_BACKEND_URL: "${OPSTRON_BACKEND_URL}"
 
       # How often to poll for new logs (seconds). Default: 30
-      # OPSTRONIC_POLL_SECS: "30"
+      # OPSTRON_POLL_SECS: "30"
 
     volumes:
       # Read-only access to Docker socket — required for log reading
@@ -43,10 +43,10 @@ services:
     cpus: "0.1"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # YOUR SERVICES BELOW — add `opstronic.monitor: "true"` to any you want watched
+  # YOUR SERVICES BELOW — add `opstron.monitor: "true"` to any you want watched
   # ──────────────────────────────────────────────────────────────────────────
 
   # Example: your-app:
   #   image: your-app:latest
   #   labels:
-  #     opstronic.monitor: "true"   # ← OpsTronic watches this container
+  #     opstron.monitor: "true"   # ← OpsTron watches this container

@@ -1,5 +1,6 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { useEffect } from "react";
+import type { ReactNode } from "react";
 import { refreshSession, useHydrated } from "@/lib/opstronic-store";
 import { TOKEN_KEY } from "@/lib/api";
 
@@ -33,9 +34,9 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "OpsTronic — Autonomous Incident Response" },
+      { title: "OpsTron — Autonomous Incident Response" },
       { name: "description", content: "AI-powered root cause analysis for production incidents." },
-      { property: "og:title", content: "OpsTronic" },
+      { property: "og:title", content: "OpsTron" },
       { property: "og:description", content: "AI-powered incident response — know what broke and why, before customers notice." },
       { property: "og:type", content: "website" },
     ],
@@ -46,7 +47,7 @@ export const Route = createRootRoute({
   notFoundComponent: NotFoundComponent,
 });
 
-function RootShell({ children }: { children: React.ReactNode }) {
+function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
       <head>

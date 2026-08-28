@@ -87,15 +87,15 @@ async function writePagesShell(jsFile, cssFile) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpsTronic - Autonomous Incident Response</title>
+    <title>OpsTron - Autonomous Incident Response</title>
     <meta
       name="description"
       content="AI-powered root cause analysis for production incidents."
     />
-    <link rel="stylesheet" href="/OpsTronic/assets/${cssFile}" />
+    <link rel="stylesheet" href="/OpsTron/assets/${cssFile}" />
   </head>
   <body class="min-h-screen bg-background text-foreground antialiased">
-    <script type="module" src="/OpsTronic/assets/${jsFile}"></script>
+    <script type="module" src="/OpsTron/assets/${jsFile}"></script>
   </body>
 </html>
 `;

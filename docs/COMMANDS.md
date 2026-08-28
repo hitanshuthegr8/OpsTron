@@ -38,8 +38,8 @@ pip install -r requirements.txt
 copy config\.env.example config\.env
 
 # ⚠️ IMPORTANT: Edit config\.env and add your API keys:
-# GEMINI_API_KEY=AIzaSy...
-# GITHUB_TOKEN=ghp_...
+# GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+# GITHUB_TOKEN=YOUR_GITHUB_TOKEN
 ```
 
 ### 3️⃣ Load Runbooks

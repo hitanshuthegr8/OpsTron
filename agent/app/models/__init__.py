@@ -1,5 +1,5 @@
 """
-OpsTronic Agent Models Package
+OpsTron Agent Models Package
 
 Contains Pydantic models for request/response schemas.
 """

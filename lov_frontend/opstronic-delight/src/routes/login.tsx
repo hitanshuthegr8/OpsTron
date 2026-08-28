@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import type { ComponentType } from "react";
 import { Github, Activity, ShieldCheck, Zap, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appPath, redirectToGitHubOAuth } from "@/lib/api";
@@ -8,7 +9,7 @@ import { initFromOAuthCallback, useAppState, useHydrated } from "@/lib/opstronic
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Sign in to OpsTronic" },
+      { title: "Sign in to OpsTron" },
       { name: "description", content: "Sign in with GitHub to deploy autonomous monitoring across your services." },
     ],
   }),
@@ -89,7 +90,7 @@ function LoginPage() {
           <div className="grid size-9 place-items-center rounded-md bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]">
             <Activity className="size-5" />
           </div>
-          <span className="text-lg font-semibold tracking-tight">OpsTronic</span>
+          <span className="text-lg font-semibold tracking-tight">OpsTron</span>
         </div>
 
         <div>
@@ -97,7 +98,7 @@ function LoginPage() {
             Autonomous incident response for the systems you ship at 3&nbsp;AM.
           </h1>
           <p className="mt-4 max-w-md text-muted-foreground">
-            OpsTronic watches your Docker containers, links errors to the exact commit that broke
+            OpsTron watches your Docker containers, links errors to the exact commit that broke
             production, and pages you via voice call — with a runbook attached — before customers notice.
           </p>
 
@@ -121,7 +122,7 @@ function LoginPage() {
             <div className="grid size-9 place-items-center rounded-md bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]">
               <Activity className="size-5" />
             </div>
-            <span className="text-lg font-semibold tracking-tight">OpsTronic</span>
+            <span className="text-lg font-semibold tracking-tight">OpsTron</span>
           </div>
 
           <h2 className="text-2xl font-semibold tracking-tight">Welcome back</h2>
@@ -186,7 +187,7 @@ function LoginPage() {
           </div>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            New to OpsTronic? GitHub sign-in creates your account automatically.
+            New to OpsTron? GitHub sign-in creates your account automatically.
           </p>
         </div>
       </section>
@@ -199,7 +200,7 @@ function Feature({
   title,
   desc,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   title: string;
   desc: string;
 }) {

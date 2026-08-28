@@ -6,7 +6,7 @@ import sys
 
 # Test configuration
 URL = "http://localhost:8001/notify-deployment"
-SECRET = "fc196c356797bef4049ea6129ca07a46df32c74ac7cbb8c1cd8cd2a1f587eb0d3"
+SECRET = "replace_with_your_webhook_secret"
 
 def send_deployment_notification(secret: str, test_name: str, payload_data: dict, expected_status: list):
     """Sign and send payload indicating expected statuses."""
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     valid_payload = {
         "service": "api-gateway",
         "commit_sha": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
-        "repository": "Himanhuthegr8/OpsTronic",
+        "repository": "YOUR_GITHUB_USERNAME/OpsTron",
         "environment": "production"
     }
     

@@ -1,4 +1,4 @@
-# OpsTronic — Architectural Review (Mentor's Deep Dive)
+# OpsTron — Architectural Review (Mentor's Deep Dive)
 
 > Read this like a code review from a senior backend engineer + DevOps lead sitting next to you.
 > No sugarcoating. Honest strengths, honest problems, and exactly why they matter.
@@ -11,11 +11,11 @@ Before anything critical, understand what you built well, because these decision
 
 ### ✅ Push-Based Log Architecture
 
-This is actually a mature DevOps pattern. You chose push (forwarder POSTs to OpsTronic) over pull (OpsTronic SSHs into servers or mounts sockets remotely).
+This is actually a mature DevOps pattern. You chose push (forwarder POSTs to OpsTron) over pull (OpsTron SSHs into servers or mounts sockets remotely).
 
 **Why this is the right call:**
-- Pull requires OpsTronic to have credentials/network access to every monitored machine — a massive security surface
-- Push means your monitored services only need to know OpsTronic's URL — one outbound connection
+- Pull requires OpsTron to have credentials/network access to every monitored machine — a massive security surface
+- Push means your monitored services only need to know OpsTron's URL — one outbound connection
 - This is exactly how Datadog, Elastic Beats, and Fluentd work in real production systems
 
 You designed this correctly without probably knowing the industry pattern name: **telemetry agent sidecar**.
@@ -258,7 +258,7 @@ async def ingest_error(
 
 ## The Optimal Architecture (For Your Scale)
 
-You don't need Kubernetes yet. Here's what "optimal for OpsTronic right now" looks like:
+You don't need Kubernetes yet. Here's what "optimal for OpsTron right now" looks like:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -303,7 +303,7 @@ You don't need Kubernetes yet. Here's what "optimal for OpsTronic right now" loo
 
 ## The Layered Maturity Model
 
-Think of backend systems in maturity levels. Here's where OpsTronic sits and where it should go:
+Think of backend systems in maturity levels. Here's where OpsTron sits and where it should go:
 
 ```
 Level 1 — It Works (✅ You Are Here)
@@ -330,7 +330,7 @@ Level 4 — It's Bulletproof (Production)
   ├─ Circuit breakers (if Groq is down, fail fast)
   ├─ Dead letter queues (failed jobs don't disappear)
   ├─ Distributed tracing (trace ID through every agent)
-  ├─ Canary deployments of OpsTronic itself
+  ├─ Canary deployments of OpsTron itself
   └─ SLA monitoring
 ```
 
@@ -340,7 +340,7 @@ Level 4 — It's Bulletproof (Production)
 
 The biggest architectural mistake beginners make is treating **every operation as a request-response cycle**.
 
-The real mental model for systems like OpsTronic:
+The real mental model for systems like OpsTron:
 
 > **"Receive fast. Process slow. Deliver when ready."**
 

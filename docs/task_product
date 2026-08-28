@@ -1,4 +1,4 @@
-# OpsTronic — Execution Tracker
+# OpsTron — Execution Tracker
 
 ## Week 1 — Product Fixes
 
@@ -36,18 +36,18 @@
 
 ### Phase 2 — Fix opstronic_forwarder.py
 - [ ] Replace `tail=50` with `since=last_poll_time` (no duplicate lines)
-- [ ] Add label filter: only monitor `opstronic.monitor=true` containers
+- [ ] Add label filter: only monitor `opstron.monitor=true` containers
 - [ ] Add Docker Events watcher thread (crash/OOM detection)
 - [ ] Add `send_heartbeat()` call on startup + every 60s
 
 ### Phase 1 — Dockerfile + Docker Hub
 - [ ] Create `agent/Dockerfile.agent`
 - [ ] Build and test image locally
-- [ ] Push `opstronic/agent:latest` to Docker Hub
+- [ ] Push `opstron/agent:latest` to Docker Hub
 
 ### Phase 4 — Fix Onboarding Docker Snippet
 - [ ] Replace broken docker-compose snippet (references local file) with Docker Hub image
-- [ ] Replace curl snippet with `docker run opstronic/agent:latest`
+- [ ] Replace curl snippet with `docker run opstron/agent:latest`
 - [ ] Add `loadUserApiKey()` to pre-fill API key in snippet
 
 ### Phase 5 — Real Connection Verification

@@ -1,5 +1,5 @@
 -- =============================================================================
--- OpsTronic Database Schema
+-- OpsTron Database Schema
 -- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New Query)
 -- =============================================================================
 
@@ -213,12 +213,12 @@ GRANT ALL ON user_profiles TO service_role;
 
 -- INSERT INTO deployments (commit_sha, repository, author, branch, message, status)
 -- VALUES 
---   ('abc1234', 'Himanhuthegr8/OpsTronic', 'Himanhuthegr8', 'main', 'feat: add auth', 'success'),
---   ('def5678', 'Himanhuthegr8/OpsTronic', 'Himanhuthegr8', 'main', 'fix: bug fix', 'watching');
+--   ('abc1234', 'YOUR_GITHUB_USERNAME/OpsTron', 'YOUR_GITHUB_USERNAME', 'main', 'feat: add auth', 'success'),
+--   ('def5678', 'YOUR_GITHUB_USERNAME/OpsTron', 'YOUR_GITHUB_USERNAME', 'main', 'fix: bug fix', 'watching');
 
 
 -- =============================================================================
--- Table 7: OpsTronic Users  (GitHub OAuth — NOT Supabase Auth)
+-- Table 7: OpsTron Users  (GitHub OAuth — NOT Supabase Auth)
 -- =============================================================================
 -- We handle GitHub OAuth ourselves (not Supabase Auth), so we need our own
 -- user table keyed on GitHub's numeric user ID.
@@ -226,7 +226,7 @@ GRANT ALL ON user_profiles TO service_role;
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS opstronic_users (
   github_id       TEXT PRIMARY KEY,          -- GitHub numeric ID as text (e.g. "12345678")
-  login           TEXT NOT NULL UNIQUE,       -- GitHub username e.g. "Himanhuthegr8"
+  login           TEXT NOT NULL UNIQUE,       -- GitHub username e.g. "YOUR_GITHUB_USERNAME"
   name            TEXT,                       -- Display name
   email           TEXT,
   avatar_url      TEXT,
@@ -251,13 +251,13 @@ GRANT ALL ON opstronic_users TO service_role;
 -- =============================================================================
 -- Table 8: Connected Repos
 -- =============================================================================
--- Tracks which GitHub repos each user has connected to OpsTronic.
+-- Tracks which GitHub repos each user has connected to OpsTron.
 -- One user can connect many repos. Webhook is installed per repo.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS connected_repos (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   github_id       TEXT NOT NULL REFERENCES opstronic_users(github_id) ON DELETE CASCADE,
-  repo_full_name  TEXT NOT NULL,              -- e.g. "Himanhuthegr8/MyApp"
+  repo_full_name  TEXT NOT NULL,              -- e.g. "YOUR_GITHUB_USERNAME/MyApp"
   owner           TEXT NOT NULL,
   repo_name       TEXT NOT NULL,
   webhook_id      TEXT,                       -- GitHub webhook ID (for deletion later)

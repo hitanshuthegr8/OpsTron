@@ -1,5 +1,5 @@
 """
-OpsTronic Agent - Main Application Entry Point
+OpsTron Agent - Main Application Entry Point
 
 This is the AI-powered Root Cause Analysis (RCA) agent that automatically
 analyzes runtime errors and provides actionable insights.
@@ -11,7 +11,7 @@ Features:
 - Runbook matching
 - AI-powered synthesis
 
-Author: OpsTronic Team
+Author: OpsTron Team
 Version: 3.0.0
 """
 
@@ -36,6 +36,27 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _index_runbooks() -> None:
+    """
+    Load runbooks into the vector store at startup.
+
+    Hosted filesystems (Render, Railway) are ephemeral, so a store persisted at
+    deploy time would not survive a restart. Re-indexing on every boot keeps the
+    runbook agent working without depending on disk that outlives the process.
+
+    Never fatal: without it, runbook search returns no matches but RCA still runs.
+    """
+    try:
+        from app.db.load_runbooks import load_runbooks
+        count = load_runbooks()
+        if count:
+            logger.info(f"Indexed {count} runbooks into the vector store")
+        else:
+            logger.warning("No runbooks indexed - runbook search will return no matches")
+    except Exception as e:
+        logger.warning(f"Runbook indexing failed, search disabled: {e}")
+
+
 def create_app() -> FastAPI:
     """
     Application Factory.
@@ -51,21 +72,22 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         # --- Startup ---
         settings.validate_startup()
+        _index_runbooks()
         logger.info("=" * 60)
-        logger.info("OpsTronic RCA Agent Starting...")
+        logger.info("OpsTron RCA Agent Starting...")
         logger.info(f"Version: 3.0.0")
         logger.info(f"Docs available at /docs")
         logger.info("=" * 60)
         yield
         # --- Shutdown ---
-        logger.info("OpsTronic RCA Agent Shutting Down...")
+        logger.info("OpsTron RCA Agent Shutting Down...")
 
     app = FastAPI(
-        title="OpsTronic RCA Agent",
+        title="OpsTron RCA Agent",
         description="""
         ## AI-Powered Root Cause Analysis System
 
-        OpsTronic automatically analyzes runtime errors and provides actionable insights.
+        OpsTron automatically analyzes runtime errors and provides actionable insights.
 
         ### Features
         - **Automated Error Ingestion**: Backend services POST errors to `/ingest-error`

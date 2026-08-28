@@ -44,7 +44,7 @@ async def github_login():
     Redirect the user to GitHub's OAuth authorization page.
     
     The user will see GitHub's consent screen asking them to authorize
-    your OpsTronic OAuth App. After they click "Authorize", GitHub redirects
+    your OpsTron OAuth App. After they click "Authorize", GitHub redirects
     them to /auth/github/callback with a temporary `code`.
     """
     if not settings.GITHUB_CLIENT_ID:

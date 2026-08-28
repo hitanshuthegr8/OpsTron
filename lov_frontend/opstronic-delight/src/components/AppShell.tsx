@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+import type { ReactNode } from "react";
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -18,7 +19,7 @@ const nav = [
   { to: "/dashboard", label: "Test Errors", icon: Activity, section: "test" as const },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const state = useAppState();
   const navigate = useNavigate();
   const hydrated = useHydrated();
@@ -46,7 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="grid size-8 place-items-center rounded-md bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]">
             <Activity className="size-4" />
           </div>
-          <div className="text-base font-semibold tracking-tight">OpsTronic</div>
+          <div className="text-base font-semibold tracking-tight">OpsTron</div>
         </div>
         <nav className="flex-1 space-y-1 p-3">
           {nav.map((item) => {

@@ -29,7 +29,7 @@ The system has been updated to use **Google Gemini 2.0 Flash** instead of Anthro
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Sign in with your Google account
 3. Click **"Get API Key"** or **"Create API Key"**
-4. Copy your API key (starts with `AIzaSy...`)
+4. Copy your API key (starts with `YOUR_GEMINI_API_KEY`)
 
 ## 📝 Setup Instructions
 
@@ -49,8 +49,8 @@ This will install:
 Create or update `agent/config/.env`:
 
 ```bash
-GEMINI_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-GITHUB_TOKEN=ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+GITHUB_TOKEN=YOUR_GITHUB_TOKEN
 CHROMA_PERSIST_DIR=./db/chroma_data
 ```
 
@@ -75,7 +75,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8001
 | Feature | Claude (Anthropic) | Gemini (Google) |
 |---------|-------------------|-----------------|
 | **Model** | claude-sonnet-4-20250514 | gemini-2.0-flash-exp |
-| **API Key Format** | `sk-ant-...` | `AIzaSy...` |
+| **API Key Format** | `sk-ant-...` | `YOUR_GEMINI_API_KEY` |
 | **System Prompts** | Separate SystemMessage | Combined with user prompt |
 | **Speed** | Fast | Very Fast (Flash model) |
 | **Cost** | Paid (after free tier) | Free tier available |

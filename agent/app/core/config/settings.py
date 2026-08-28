@@ -10,6 +10,24 @@ import os
 from urllib.parse import urlparse
 
 
+def _resolve_env_file() -> str:
+    """
+    Locate the .env file.
+
+    Looks in `agent/` first, then falls back to the repository root, so the
+    same checkout works whether the .env is kept beside the agent or at the
+    top level. Returns the agent-local path if neither exists.
+    """
+    config_dir = os.path.dirname(__file__)
+    agent_env = os.path.abspath(os.path.join(config_dir, "..", "..", "..", ".env"))
+    repo_env = os.path.abspath(os.path.join(config_dir, "..", "..", "..", "..", ".env"))
+
+    for candidate in (agent_env, repo_env):
+        if os.path.exists(candidate):
+            return candidate
+    return agent_env
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
@@ -26,7 +44,7 @@ class Settings(BaseSettings):
     # GitHub Integration
     # ==========================================================================
     GITHUB_TOKEN: str = ""
-    DEFAULT_REPO: str = "Himanhuthegr8/OpsTronic"
+    DEFAULT_REPO: str = ""
     
     # ==========================================================================
     # ChromaDB (Runbooks)
@@ -71,6 +89,10 @@ class Settings(BaseSettings):
     # Agent Configuration
     # ==========================================================================
     AGENT_URL: str = "http://localhost:8001"
+    # Publicly reachable base URL for this backend (e.g. an ngrok or deployed
+    # host). GitHub must be able to reach it to deliver webhooks. When set, it
+    # overrides whatever callback URL a client proposes.
+    PUBLIC_URL: str = ""
     DEPLOYMENT_WATCH_MINUTES: int = 5
     MAX_LOG_CHARS: int = 30000
     INCIDENT_RCA_COOLDOWN_MINUTES: int = 15
@@ -101,6 +123,9 @@ class Settings(BaseSettings):
                 "http://127.0.0.1:5173",
                 "http://localhost:3000",
                 "http://127.0.0.1:3000",
+                # lov_frontend's vite preset serves on 8080 in dev
+                "http://localhost:8080",
+                "http://127.0.0.1:8080",
             ])
         return sorted(set(origins))
 
@@ -133,7 +158,7 @@ class Settings(BaseSettings):
             raise RuntimeError("Invalid production config: " + ", ".join(missing))
     
     class Config:
-        env_file = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env")
+        env_file = _resolve_env_file()
         case_sensitive = True
         extra = "ignore"  # Ignore any extra env vars not defined here
 

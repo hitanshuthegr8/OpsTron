@@ -4,11 +4,11 @@ import { useAppState, useHydrated } from "@/lib/opstronic-store";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "OpsTronic — Autonomous incident response for production systems" },
+      { title: "OpsTron — Autonomous incident response for production systems" },
       {
         name: "description",
         content:
-          "OpsTronic monitors your services, classifies critical incidents, and pages the right humans before customers notice.",
+          "OpsTron monitors your services, classifies critical incidents, and pages the right humans before customers notice.",
       },
     ],
   }),

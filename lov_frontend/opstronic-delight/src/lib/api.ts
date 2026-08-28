@@ -1,15 +1,18 @@
 /**
- * OpsTronic Backend API Client
- * All calls go to the deployed FastAPI backend on Render.
+ * OpsTron Backend API Client
+ * Configure VITE_BACKEND_URL in GitHub Pages/Render deployment settings.
  */
 
-export const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://opstronic.onrender.com";
-const APP_BASE = import.meta.env.PROD ? "/OpsTronic" : "";
+export const BACKEND = import.meta.env.VITE_BACKEND_URL || "";
+const APP_BASE = import.meta.env.PROD ? "/OpsTron" : "";
 
 // ─── Auth token helpers ────────────────────────────────────────────────────
 export const TOKEN_KEY = "ops_token";
 export const AGENT_KEY = "ops_agent_key";
-const APP_STATE_KEY = "opstronic:state:v2";
+// Persisted app state (includes the cached user). Declared here so clearAuth
+// can drop it too -- a cached user outliving its token sends the login route
+// into a redirect loop.
+export const STATE_KEY = "opstronic:state:v2";
 
 export function appPath(path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
@@ -30,7 +33,9 @@ export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(AGENT_KEY);
   localStorage.removeItem("ops_connected_repo");
-  localStorage.removeItem(APP_STATE_KEY);
+  // Drop the cached user as well. Without this the session looks dead to the
+  // API but alive to the router, which bounces /login -> /onboarding forever.
+  localStorage.removeItem(STATE_KEY);
 }
 
 // ─── Base fetch helper ─────────────────────────────────────────────────────
@@ -55,8 +60,26 @@ async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    const err = await res.text().catch(() => res.statusText);
-    throw new Error(err);
+    // FastAPI reports errors as {"detail": "..."} — surface that message
+    // directly instead of dumping raw JSON at the user.
+    const raw = await res.text().catch(() => "");
+    let message = raw || res.statusText;
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.detail === "string") {
+        message = parsed.detail;
+      } else if (Array.isArray(parsed?.detail)) {
+        // Pydantic validation errors come back as a list of objects
+        message = parsed.detail
+          .map((d: { loc?: unknown[]; msg?: string }) =>
+            `${(d.loc ?? []).join(".")}: ${d.msg ?? "invalid"}`,
+          )
+          .join("; ");
+      }
+    } catch {
+      // not JSON — keep the raw text
+    }
+    throw new Error(message);
   }
 
   // 204 No Content
@@ -116,10 +139,17 @@ export interface RCAReport {
     summary?: string;
     confidence?: string;
     confidence_score?: number;
+    contributing_factors?: unknown[];
+    evidence?: Record<string, unknown>;
+    suspect_code_change?: Record<string, unknown>;
+    rollback_recommendation?: Record<string, unknown>;
     recommended_actions?: string[];
     recommendations?: string[];
     error_signals?: string[];
     signals?: string[];
+    error_correlation?: string;
+    ingestion_mode?: string;
+    timeline?: string;
   };
 }
 

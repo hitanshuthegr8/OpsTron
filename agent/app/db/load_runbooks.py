@@ -1,8 +1,7 @@
 import sys
 import os
-
-# Add the `agent/` directory to sys.path so `app.*` imports resolve when this
-# script is run directly (`python app/db/load_runbooks.py`).
+# Add the `agent/` directory to sys.path so `app.*` imports resolve
+# when this script is run directly.
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
@@ -19,9 +18,8 @@ def _find_runbooks_dir() -> str:
     """
     Locate the runbooks directory.
 
-    Checks `agent/runbooks` first, then the repository root, so the loader works
-    regardless of which level the runbooks are kept at (the repo keeps them at
-    the root; container images copy them next to the app).
+    Checks `agent/runbooks` first, then the repository root, so the loader
+    works regardless of which level the runbooks are kept at.
     """
     db_dir = os.path.dirname(os.path.abspath(__file__))
     agent_dir = os.path.dirname(os.path.dirname(db_dir))
@@ -38,20 +36,21 @@ def _find_runbooks_dir() -> str:
 
 def load_runbooks():
     runbooks_dir = _find_runbooks_dir()
-
+    
     logger.info(f"Loading runbooks from: {runbooks_dir}")
-
+    
     loader = DocumentLoader()
     documents = loader.load_markdown_files(runbooks_dir)
-
+    
     if not documents:
         logger.error(f"No runbook documents found in {runbooks_dir}!")
-        return
+        return 0
 
     store = ChromaStore()
     store.add_documents(documents)
 
     logger.info(f"Successfully loaded {len(documents)} runbooks into ChromaDB")
+    return len(documents)
 
 
 if __name__ == "__main__":

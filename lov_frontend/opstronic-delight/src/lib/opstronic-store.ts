@@ -5,6 +5,7 @@ import {
   AGENT_KEY,
   rotateAgentApiKey,
   setToken,
+  STATE_KEY,
   TOKEN_KEY,
   type BackendUser,
   type RCAReport,
@@ -58,7 +59,7 @@ export interface AppState {
   backendOnline: boolean;
 }
 
-const KEY = "opstronic:state:v2";
+const KEY = STATE_KEY;
 
 const defaultOnboarding: OnboardingData = {
   repo: "",

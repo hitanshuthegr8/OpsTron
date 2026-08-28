@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useMemo, useCallback } from "react";
+import type { ComponentType, FormEvent, ReactNode } from "react";
 import {
   AlertTriangle, Activity, Search, Filter, CheckCircle2,
   XCircle, Clock, TrendingUp, Upload, FileText, Send, RefreshCw,
@@ -23,7 +24,7 @@ import { fetchRCAHistory, fetchAgentStatus, checkHealth, ingestTestLog, uploadRu
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard — OpsTronic" },
+      { title: "Dashboard — OpsTron" },
       { name: "description", content: "Live incidents, RCA reports, and runbooks." },
     ],
   }),
@@ -169,7 +170,7 @@ function RCAList({ reports }: { reports: RCAReport[] }) {
         </div>
         <div className="text-sm font-medium">No RCA reports yet</div>
         <div className="max-w-xs text-xs text-muted-foreground">
-          Push a commit or trigger a test error. OpsTronic will analyze it and show the full breakdown here.
+          Push a commit or trigger a test error. OpsTron will analyze it and show the full breakdown here.
         </div>
       </div>
     );
@@ -345,7 +346,7 @@ function DetailStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-2">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
@@ -450,7 +451,7 @@ function Incidents() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `opstronic-incidents-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `opstron-incidents-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -603,7 +604,7 @@ function Runbooks() {
         {files.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <div className="text-sm font-medium text-muted-foreground">No runbooks yet</div>
-            <div className="text-xs text-muted-foreground max-w-xs">OpsTronic uses runbooks to suggest remediation steps during incidents.</div>
+            <div className="text-xs text-muted-foreground max-w-xs">OpsTron uses runbooks to suggest remediation steps during incidents.</div>
           </div>
         ) : (
           <ul className="divide-y divide-border">
@@ -639,7 +640,7 @@ function TestErrors() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!service.trim() || !message.trim()) return;
     setSending(true);
@@ -710,7 +711,7 @@ function TestErrors() {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function Stat({ label, value, icon: Icon, tone }: {
   label: string; value: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   tone: "warning" | "destructive" | "info" | "success";
 }) {
   const toneCls: Record<typeof tone, string> = {

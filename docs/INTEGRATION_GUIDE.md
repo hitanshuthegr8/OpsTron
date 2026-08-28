@@ -1,10 +1,10 @@
-# OpsTronic GitHub Actions & Docker Integration Guide
+# OpsTron GitHub Actions & Docker Integration Guide
 
 ## GitHub Actions Workflow
 
 ### What it does
-Notifies your OpsTronic agent every time code is pushed to your repository.
-OpsTronic immediately enters "Watch Mode" during a deployment to catch regressions.
+Notifies your OpsTron agent every time code is pushed to your repository.
+OpsTron immediately enters "Watch Mode" during a deployment to catch regressions.
 
 ### Setup Steps
 
@@ -16,19 +16,19 @@ OpsTronic immediately enters "Watch Mode" during a deployment to catch regressio
 2. **Add secrets to your GitHub repo** (Settings → Secrets and variables → Actions):
    | Secret Name | Value |
    |---|---|
-   | `OPSTRONIC_WEBHOOK_SECRET` | The random string from step 1 |
-   | `OPSTRONIC_BACKEND_URL` | `http://your-server:8001/notify-deployment` |
+   | `OPSTRON_WEBHOOK_SECRET` | The random string from step 1 |
+   | `OPSTRON_BACKEND_URL` | `http://your-server:8001/notify-deployment` |
 
 3. **Copy the workflow file** from `docs/opstronic.yml` into your repo at `.github/workflows/opstronic.yml`
 
-4. Push any code — OpsTronic will receive the webhook within seconds.
+4. Push any code — OpsTron will receive the webhook within seconds.
 
 ---
 
 ## Docker Log Forwarder
 
 ### What it does
-The `opstronic_forwarder.py` script runs alongside your app containers and streams error logs to OpsTronic's AI engine in real-time (push-based, no inbound access needed).
+The `opstronic_forwarder.py` script runs alongside your app containers and streams error logs to OpsTron's AI engine in real-time (push-based, no inbound access needed).
 
 ### Quick Start
 
@@ -46,8 +46,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./opstronic_forwarder.py:/app/opstronic_forwarder.py
     environment:
-      OPSTRONIC_BACKEND_URL: "http://your-opstronic-server:8001/agent/logs/ingest"
-      OPSTRONIC_API_KEY: "your_api_key_here"
+      OPSTRON_BACKEND_URL: "http://your-opstron-server:8001/agent/logs/ingest"
+      OPSTRON_API_KEY: "YOUR_AGENT_API_KEY"
     command: sh -c "pip install requests docker -q && python /app/opstronic_forwarder.py"
     restart: unless-stopped
 ```
@@ -56,14 +56,14 @@ services:
 
 ```bash
 # Download the forwarder
-curl -O https://raw.githubusercontent.com/Himanhuthegr8/OpsTronic/main/agent/opstronic_forwarder.py
+curl -O https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/OpsTron/main/agent/opstronic_forwarder.py
 
 # Install dependencies
 pip install requests docker
 
 # Run it
-export OPSTRONIC_BACKEND_URL="http://your-opstronic-server:8001/agent/logs/ingest"
-export OPSTRONIC_API_KEY="your_api_key_here"
+export OPSTRON_BACKEND_URL="http://your-opstron-server:8001/agent/logs/ingest"
+export OPSTRON_API_KEY="YOUR_AGENT_API_KEY"
 python opstronic_forwarder.py
 ```
 
@@ -71,8 +71,8 @@ python opstronic_forwarder.py
 
 | Variable | Required | Description |
 |---|---|---|  
-| `OPSTRONIC_BACKEND_URL` | ✅ | URL of your OpsTronic server + `/agent/logs/ingest` |
-| `OPSTRONIC_API_KEY` | ✅ | API key for authentication |
+| `OPSTRON_BACKEND_URL` | ✅ | URL of your OpsTron server + `/agent/logs/ingest` |
+| `OPSTRON_API_KEY` | ✅ | API key for authentication |
 | `OPSTRONIC_POLL_INTERVAL` | ❌ | How often to poll logs in seconds (default: `5`) |
 
 ### Security Notes

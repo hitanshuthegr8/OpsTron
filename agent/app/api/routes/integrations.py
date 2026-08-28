@@ -3,7 +3,7 @@ GitHub Integration Routes
 
 Provides endpoints for the repo picker and webhook auto-installation.
 These routes proxy GitHub API calls using the user's OAuth token
-stored in their OpsTronic session, so the user never has to paste
+stored in their OpsTron session, so the user never has to paste
 secrets or edit YAML files manually.
 
 Endpoints:
@@ -64,7 +64,7 @@ async def list_repos(session: dict = GitHubAuth):
     """
     Fetch all repos accessible to the logged-in GitHub user.
 
-    Uses the GitHub access token stored in the user's OpsTronic session.
+    Uses the GitHub access token stored in the user's OpsTron session.
     Returns repos sorted by recently pushed, filtering out forks.
     """
     github_token = session.get("github_access_token")
@@ -141,6 +141,13 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
             detail="No GitHub access token in session. Please log in again."
         )
 
+    # The server is authoritative about its own address: a browser on localhost
+    # cannot know the public URL GitHub needs to reach us. PUBLIC_URL wins when set.
+    webhook_url = body.webhook_url
+    if settings.PUBLIC_URL:
+        webhook_url = f"{settings.PUBLIC_URL.rstrip('/')}/notify-deployment"
+        logger.info(f"Using configured PUBLIC_URL for webhook target: {webhook_url}")
+
     # First check if a webhook from us already exists to avoid duplicates
     async with httpx.AsyncClient() as client:
         existing = await client.get(
@@ -154,7 +161,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
 
     if existing.status_code == 200:
         for hook in existing.json():
-            if hook.get("config", {}).get("url") == body.webhook_url:
+            if hook.get("config", {}).get("url") == webhook_url:
                 logger.info(f"Webhook already exists on {body.owner}/{body.repo} (id={hook['id']})")
                 async with httpx.AsyncClient() as client:
                     update = await client.patch(
@@ -162,7 +169,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
                         json={
                             "active": True,
                             "events": ["push"],
-                            "config": _webhook_config(body.webhook_url),
+                            "config": _webhook_config(webhook_url),
                         },
                         headers={
                             "Authorization": f"Bearer {github_token}",
@@ -189,7 +196,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
                 return {
                     "status": "already_exists",
                     "hook_id": hook["id"],
-                    "message": f"OpsTronic webhook is already active on {body.owner}/{body.repo}.",
+                    "message": f"OpsTron webhook is already active on {body.owner}/{body.repo}.",
                     "repo": f"{body.owner}/{body.repo}",
                 }
 
@@ -201,7 +208,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
                 "name": "web",
                 "active": True,
                 "events": ["push"],
-                "config": _webhook_config(body.webhook_url),
+                "config": _webhook_config(webhook_url),
             },
             headers={
                 "Authorization": f"Bearer {github_token}",
@@ -218,7 +225,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
         # Provide a friendlier message for common validation failures
         if message == "Validation Failed":
             url_errors = [e for e in errors if e.get("field") == "url"]
-            if url_errors or body.webhook_url.startswith("http://localhost"):
+            if url_errors or webhook_url.startswith("http://localhost"):
                 message = (
                     "GitHub cannot reach your backend URL (localhost is not publicly accessible). "
                     "The webhook was registered as inactive. Use a public URL (e.g. via ngrok) "
@@ -242,7 +249,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
     return {
         "status": "created",
         "hook_id": hook["id"],
-        "message": f"OpsTronic is now watching {body.owner}/{body.repo} for pushes!",
+        "message": f"OpsTron is now watching {body.owner}/{body.repo} for pushes!",
         "repo": f"{body.owner}/{body.repo}",
         "events": hook.get("events", ["push"]),
     }
@@ -255,7 +262,7 @@ async def install_webhook(body: InstallWebhookRequest, session: dict = GitHubAut
 @router.delete("/remove-webhook")
 async def remove_webhook(body: RemoveWebhookRequest, session: dict = GitHubAuth):
     """
-    Remove an OpsTronic webhook from a user's repository.
+    Remove an OpsTron webhook from a user's repository.
     """
     github_token = session.get("github_access_token")
     if not github_token:
