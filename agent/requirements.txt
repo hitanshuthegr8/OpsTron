@@ -1,4 +1,7 @@
-fastapi==0.115.6
+# Range, not a pin: chromadb 1.0.x hard-pins `fastapi==0.115.9`, and Render's
+# build image only has manylinux_2_17 chromadb wheels, so pip backtracks into
+# that range and an exact `==0.115.6` here makes the resolve impossible.
+fastapi>=0.115.9,<0.116
 uvicorn[standard]==0.34.0
 pydantic==2.10.3
 pydantic-settings==2.7.0
