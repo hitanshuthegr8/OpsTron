@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # ==========================================================================
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
+    # Model id used for all RCA inference. Override per-environment via .env —
+    # Groq rotates its catalogue and model access varies by account tier.
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     
     # ==========================================================================
     # GitHub Integration
@@ -100,6 +103,19 @@ class Settings(BaseSettings):
                 "http://127.0.0.1:3000",
             ])
         return sorted(set(origins))
+
+    def cors_origin_regex(self) -> Optional[str]:
+        """
+        Dev-only escape hatch for CORS.
+
+        Vite does not guarantee a port: if 8080 is taken it silently moves to
+        8081, and the browser then blocks every API call because the new origin
+        is not in the allowlist. Outside production we therefore allow any
+        localhost port. Production keeps the explicit allowlist only.
+        """
+        if self.is_production():
+            return None
+        return r"http://(localhost|127\.0\.0\.1)(:\d+)?"
 
     def validate_startup(self) -> None:
         if not self.is_production():

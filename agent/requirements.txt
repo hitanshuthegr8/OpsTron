@@ -17,8 +17,10 @@ aiohttp==3.11.11
 requests==2.32.3
 
 # Database (chromadb import is wrapped in try/except in vector_store.py)
-numpy<2.0
-chromadb==0.4.24
+# chromadb must stay >=1.0: 0.4.x pulls chroma-hnswlib, which ships no wheel for
+# Python 3.12 on Windows and fails to build without MSVC. 1.x is wheel-only.
+numpy
+chromadb>=1.0
 
 # Resilience
 tenacity
