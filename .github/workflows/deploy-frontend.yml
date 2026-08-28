@@ -34,8 +34,13 @@ jobs:
         run: npm run build
         working-directory: lov_frontend/opstronic-delight
         env:
-          # Set this repository secret to your deployed Render/FastAPI backend URL.
-          VITE_BACKEND_URL: ${{ secrets.OPSTRON_BACKEND_URL }}
+          # Backend base URL baked into the bundle at build time.
+          # Override by setting the OPSTRON_BACKEND_URL repository secret; the
+          # literal is the fallback so a missing secret cannot silently ship a
+          # build with an empty base. An empty base makes every call relative to
+          # the Pages domain, so "Continue with GitHub" lands on
+          # github.io/auth/github/login and 404s instead of reaching the API.
+          VITE_BACKEND_URL: ${{ secrets.OPSTRON_BACKEND_URL || 'https://opstronic.onrender.com' }}
 
       - name: Create GitHub Pages index fallback
         run: |

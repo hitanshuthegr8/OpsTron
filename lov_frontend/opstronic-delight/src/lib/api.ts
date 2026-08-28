@@ -6,6 +6,18 @@
 export const BACKEND = import.meta.env.VITE_BACKEND_URL || "";
 const APP_BASE = import.meta.env.PROD ? "/OpsTron" : "";
 
+// An empty BACKEND makes every request relative to whatever host is serving the
+// app. On GitHub Pages that silently sends `${BACKEND}/auth/github/login` to
+// <user>.github.io/auth/github/login, which renders GitHub's own 404 rather than
+// any error this app can show. Fail loudly instead of shipping that quietly.
+if (!BACKEND && typeof window !== "undefined" && import.meta.env.PROD) {
+  console.error(
+    "[OpsTron] VITE_BACKEND_URL was not set at build time. API calls will " +
+      `resolve against ${window.location.origin} and fail. Set the ` +
+      "OPSTRON_BACKEND_URL repository secret and re-run the deploy workflow.",
+  );
+}
+
 // ─── Auth token helpers ────────────────────────────────────────────────────
 export const TOKEN_KEY = "ops_token";
 export const AGENT_KEY = "ops_agent_key";
