@@ -3,8 +3,10 @@
 # that range and an exact `==0.115.6` here makes the resolve impossible.
 fastapi>=0.115.9,<0.116
 uvicorn[standard]==0.34.0
-pydantic==2.10.3
-pydantic-settings==2.7.0
+# supabase 2.31's `realtime` dependency needs pydantic>=2.11.7, so these cannot
+# stay exact-pinned without making the whole resolve impossible.
+pydantic>=2.11.7,<3
+pydantic-settings>=2.7,<3
 
 # LangChain — no version pins, let pip resolve compatible set
 langchain
@@ -15,7 +17,8 @@ langchain-text-splitters
 google-generativeai
 
 # HTTP
-httpx==0.27.0
+# supabase >=2.31 requires httpx>=0.28; the old 0.27 pin blocks the upgrade.
+httpx>=0.28,<0.29
 aiohttp==3.11.11
 requests==2.32.3
 
@@ -37,4 +40,7 @@ python-multipart==0.0.20
 python-dotenv==1.0.1
 
 # Supabase (Persistent Storage)
-supabase==2.10.0
+# 2.10 validates the API key against a JWT regex and rejects Supabase's current
+# `sb_secret_...` keys with a bare "Invalid API key" before any network call.
+# 2.31+ accepts both the legacy JWT keys and the new format.
+supabase>=2.31,<3
