@@ -85,7 +85,11 @@ async def github_callback(code: str):
         raise HTTPException(status_code=400, detail="Missing authorization code")
     
     # --- Exchange the code for an access_token ---
-    async with httpx.AsyncClient() as client:
+    # An OAuth code is single-use: GitHub burns it the moment it processes the
+    # exchange. httpx defaults to a 5s timeout, which a cold free-tier container
+    # can exceed while GitHub still consumes the code — the retry then fails with
+    # "The code passed is incorrect or expired", pointing at the wrong cause.
+    async with httpx.AsyncClient(timeout=30.0) as client:
         token_response = await client.post(
             GITHUB_TOKEN_URL,
             json={
@@ -101,11 +105,14 @@ async def github_callback(code: str):
     
     if not access_token:
         error = token_data.get("error_description", "Unknown error")
-        logger.error(f"GitHub OAuth token exchange failed: {error}")
+        logger.error(
+            f"GitHub OAuth token exchange failed: {error} "
+            f"| code_fingerprint={code[:6]}... client_id={settings.GITHUB_CLIENT_ID[:10]}..."
+        )
         raise HTTPException(status_code=401, detail=f"GitHub auth failed: {error}")
     
     # --- Fetch the user's GitHub profile ---
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         user_response = await client.get(
             GITHUB_USER_URL,
             headers={
