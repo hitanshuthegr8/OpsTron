@@ -34,13 +34,17 @@ jobs:
         run: npm run build
         working-directory: lov_frontend/opstronic-delight
         env:
-          # Backend base URL baked into the bundle at build time.
+          # Backend base URL baked into the bundle at build time. This must be
+          # THIS fork's own Render service (opstron), not the upstream project's
+          # (opstronic) — pointing at upstream's backend sends OAuth callbacks to
+          # upstream's Pages site, because the callback redirects to whatever
+          # FRONTEND_URL that server is configured with.
           # Override by setting the OPSTRON_BACKEND_URL repository secret; the
           # literal is the fallback so a missing secret cannot silently ship a
           # build with an empty base. An empty base makes every call relative to
           # the Pages domain, so "Continue with GitHub" lands on
           # github.io/auth/github/login and 404s instead of reaching the API.
-          VITE_BACKEND_URL: ${{ secrets.OPSTRON_BACKEND_URL || 'https://opstronic.onrender.com' }}
+          VITE_BACKEND_URL: ${{ secrets.OPSTRON_BACKEND_URL || 'https://opstron.onrender.com' }}
 
       - name: Create GitHub Pages index fallback
         run: |
