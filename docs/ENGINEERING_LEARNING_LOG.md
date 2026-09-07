@@ -339,3 +339,99 @@ Mastery levels: **Understand** (can explain) · **Read** (can follow the code) �
 **Mastery:** Understand → Architect
 
 **Exercise.** Design a `/version` endpoint returning commit SHA and build time. State how it would have shortened this to one request.
+
+---
+
+## 15. Instrument what already ran, don't animate what you hope happened
+
+**Problem.** The demo showed four investigation stages ticking over on a 2.2s interval. It was labelled "indicative", but the frontend was inventing progress it had no knowledge of.
+
+**Root cause.** The backend ran four agents and returned one response at the end. The UI had no per-stage information, so it fabricated some. Worse, the fabrication was measurably wrong — the real distribution is `logs 3991ms, commits 0ms, runbooks 1176ms, synthesis 2276ms`, nothing like four even steps.
+
+**Concept.** Instrumentation vs simulation. The orchestrator was already computing every agent's output and discarding it — the data existed and was being thrown away. Adding an optional callback surfaced real measurements at near-zero cost. The general shape: before building a progress indicator, ask whether the system can actually report progress. If it can't, either make it able to, or say so.
+
+**Why it matters in OpsTron.** The product's entire claim is that its analysis is genuine. A fabricated progress bar on the page that demonstrates that claim undermines it, and a viewer who notices has good reason to doubt everything else.
+
+**Solution.** `analyze()` takes an optional `on_step` callback invoked after each stage with the stage name, a duration timed around the real `await`, and that agent's output. The demo collects these into a `steps` array. During the run the UI shows one honest spinner; afterwards it shows the four stages with measured durations, each expandable to that agent's real findings. `"instant"` is a true reading for the seeded commit step, not a rounding artefact.
+
+**Alternatives.** Stream per-stage events over SSE/NDJSON — genuinely live, and the only way to show progress *during* the run. Prototyped and measured working (lines arriving at 3.1s, 3.1s, 3.1s, 5.4s) but deferred as not worth the complexity yet. Left out rather than half-done.
+
+**Location.** `agent/app/core/orchestrator.py::analyze` (the `_emit` helper), `agent/app/api/routes/demo.py`, `lov_frontend/opstronic-delight/src/components/demo-parts.tsx::StepRow`
+
+**Learn.** Distinguish "the UI knows this" from "the UI is guessing this". For any progress indicator, name the data source.
+
+**Mastery:** Understand -> Architect
+
+**Exercise.** Add a fifth stage to the pipeline that only does `await asyncio.sleep(0.5)`. Confirm it appears in the UI without touching any frontend code. That is what "driven by real data" means.
+
+---
+
+## 16. Compiling is not importing
+
+**Problem.** `python -m compileall` passed. The server then crashed on startup with `NameError: name 'Callable' is not defined`.
+
+**Root cause.** I added `on_step: Optional[Callable[...]]` to a signature, but the import edit never applied — the real line read `from typing import Dict, Any, Optional` and I had pattern-matched a different ordering. `py_compile` only checks that the source *parses*. Names used in signature annotations are evaluated when the enclosing class body executes, which is import time, not compile time.
+
+**Concept.** The stages of running Python: parse, compile to bytecode, execute. Syntax errors surface at compile; `NameError`, `ImportError` and anything in a class body surface only on execution. A compile check is a weak guarantee.
+
+**Why it matters in OpsTron.** The habit throughout this project has been to run the thing rather than trust it. This is the case where a weaker check gave false confidence and cost a failed startup.
+
+**Solution.** Verify with `python -c "import main"`, which actually executes module and class bodies.
+
+**Alternatives.** `from __future__ import annotations` makes annotations lazy strings, so this specific `NameError` would not fire — but that hides the missing import rather than catching it, and the name is still absent for anything introspecting types at runtime.
+
+**Location.** `agent/app/core/orchestrator.py` imports
+
+**Learn.** Know which errors each check catches. `compileall` catches syntax; importing catches names; running catches behaviour; tests catch regressions.
+
+**Mastery:** Understand -> Modify
+
+**Exercise.** Write a module containing `def f(x: Nonexistent): pass`. Confirm `py_compile` passes and `import` fails. Add `from __future__ import annotations` and explain why the failure moves.
+
+---
+
+## 17. When you remove colour, meaning has to move somewhere else
+
+**Problem.** Converting the UI to monochrome deleted the mechanism that signalled severity and confidence. A high-confidence badge in amber next to a low one in grey is instantly rankable; two grey badges are not.
+
+**Root cause.** Meaning had been encoded in hue alone. Hue is one channel among several — lightness, fill, border weight, size, position and repetition were all available and unused.
+
+**Concept.** Redundant encoding. Information carried only by colour fails for a monochrome theme, for a printed page, for a colour-blind viewer, and in bright sunlight. The accessibility guidance ("do not use colour as the only visual means of conveying information") and this design constraint turn out to be the same requirement.
+
+**Why it matters in OpsTron.** This is an incident-response UI. Severity and confidence are the first two things a responder reads, and both were hue-only.
+
+**Solution.** Confidence became filled-white for high, outlined for medium, dim for low, plus a three-dot indicator. Filled reads as more emphatic than outlined, preserving the ranking, and the dots state the level independently of contrast.
+
+**Alternatives.** Keep one accent colour for semantics — a common and defensible pattern, but not what was asked for, and solving it monochrome forced the more robust encoding.
+
+**Location.** `lov_frontend/opstronic-delight/src/routes/demo.tsx::ConfidenceBadge`, `src/styles.css`
+
+**Learn.** For every piece of meaning in a UI, name the channel carrying it. If the answer is only "colour", add a second.
+
+**Mastery:** Understand -> Implement
+
+**Exercise.** Open the demo with DevTools -> Rendering -> Emulate vision deficiencies -> Achromatopsia. Find anything still relying on hue.
+
+---
+
+## 18. Two rules can target the same element, and the later one wins
+
+**Problem.** Rewriting the `:root` palette appeared to change nothing.
+
+**Root cause.** `__root.tsx` renders `<html lang="en" className="dark">`. Both `:root` and `.dark` match that same element with identical specificity (0,1,0), so the later declaration wins — and `.dark` still held the old violet values.
+
+**Concept.** CSS cascade resolution: origin, then specificity, then source order. `:root` is a pseudo-class with class-level specificity, not something inherently higher priority. A theme system with two blocks has two places to change, not one.
+
+**Why it matters in OpsTron.** The project ships a dark theme applied unconditionally, so `:root` is effectively dead configuration that reads as though it were live.
+
+**Solution.** Both blocks carry the same palette, with a comment in `.dark` explaining why it must mirror `:root`.
+
+**Alternatives.** Drop the `dark` class and use `:root` alone — cleaner, and worth doing if a light theme is never added. Left alone to avoid touching a working root layout for a cosmetic change.
+
+**Location.** `lov_frontend/opstronic-delight/src/styles.css`, `src/routes/__root.tsx`
+
+**Learn.** Before editing a CSS variable, confirm which rule actually wins. DevTools shows overridden declarations struck through.
+
+**Mastery:** Understand -> Modify
+
+**Exercise.** Inspect `<html>` in DevTools and find `--background`. Identify which block supplies the winning value, and what happens if you delete the `dark` class from the element.

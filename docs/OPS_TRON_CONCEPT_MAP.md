@@ -297,6 +297,48 @@ Map them: browser → backend, backend → GitHub/Groq/Supabase, forwarder → b
 
 ---
 
+---
+
+## Design and accessibility
+
+Added after the monochrome rewrite, which removed the channel most of the UI was relying on.
+
+**Redundant encoding** — `Implement`
+Meaning must not be carried by hue alone. The confidence badge encodes level three ways at once: fill, border weight and a dot count. This is simultaneously an accessibility requirement and what makes a monochrome theme possible.
+→ `src/routes/demo.tsx::ConfidenceBadge`
+
+**Visual hierarchy without colour** — `Understand`
+Lightness steps, border weight, spacing and position do the work a palette normally does. The theme is four elevation steps deliberately close together, so contrast is available for content rather than spent on chrome.
+→ `src/styles.css` — the four surface tokens
+
+**CSS cascade resolution** — `Modify`
+`:root` and `.dark` both match `<html>` with the same specificity, so source order decides. Know this before editing a design token, or the edit appears to do nothing.
+→ `src/styles.css`, `src/routes/__root.tsx`
+
+**OKLCH colour** — `Understand`
+`oklch(L C H)` — lightness, chroma, hue. Setting chroma to zero gives a perceptually even greyscale ramp, which is why the monochrome conversion was a mechanical edit rather than a redesign.
+
+*Skip:* colour theory beyond this, design systems theory, animation libraries. Not used.
+
+---
+
+## Instrumentation
+
+**Measuring vs simulating** — `Architect`
+The orchestrator computed every agent's output and discarded it. Surfacing real measurements through an optional callback cost almost nothing; animating a guess cost credibility. Before building any progress indicator, ask what the system can actually report.
+→ `agent/app/core/orchestrator.py::analyze` (`_emit`), `src/components/demo-parts.tsx::StepRow`
+
+**Callback hooks as an extension point** — `Implement`
+`on_step` is optional and defaults to `None`, so production paths are unchanged and pay nothing. Compare with the alternative of a second code path for the demo, which would have drifted.
+
+**Streaming responses** — `Understand`
+Prototyped and deferred. Worth knowing why: a `StreamingResponse` commits `200 OK` on the first byte, so a mid-stream failure cannot be an HTTP status and must travel as an event the client looks for. Also that proxies buffer by default, which silently turns streaming back into a single delivery.
+
+**What each verification catches** — `Modify`
+`compileall` catches syntax. Importing catches names. Running catches behaviour. Tests catch regressions. Choosing too weak a check is how a `NameError` reached startup.
+
+---
+
 ## Suggested order
 
 1. **Backend + APIs** — the orchestrator and routers are the spine.
@@ -307,3 +349,5 @@ Map them: browser → backend, backend → GitHub/Groq/Supabase, forwarder → b
 6. **Frontend** — build-time config is the part that actually bites.
 7. **CI/CD + deployment** — platform-specific resolution, ephemeral disks.
 8. **Testing + Observability** — what to assert, and what isn't measured.
+9. **Instrumentation** — measuring versus simulating; what each verification step actually catches.
+10. **Design + accessibility** — redundant encoding and the CSS cascade; short, and it pays for itself the first time a token edit appears to do nothing.
