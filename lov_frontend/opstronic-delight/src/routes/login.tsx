@@ -1,7 +1,7 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
-import { Github, Activity, ShieldCheck, Zap, Bot } from "lucide-react";
+import { Github, Activity, ShieldCheck, Zap, Bot, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appPath, redirectToGitHubOAuth } from "@/lib/api";
 import { initFromOAuthCallback, useAppState, useHydrated } from "@/lib/opstronic-store";
@@ -103,14 +103,21 @@ function LoginPage() {
           </p>
 
           <div className="mt-10 grid gap-5 max-w-md">
-            <Feature icon={Bot} title="AI Root Cause Analysis" desc="GPT-4 powered error analysis across logs, commits, and runbooks." />
+            <Feature icon={Bot} title="AI Root Cause Analysis" desc="Groq-hosted gpt-oss-120b correlates logs, commits, and runbooks into a root cause." />
             <Feature icon={Zap} title="Voice paging" desc="Calls on-call engineers when severity crosses your threshold." />
             <Feature icon={ShieldCheck} title="Runbook-aware" desc="Attaches the right runbook step to every incident automatically." />
           </div>
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          Built for DevOps teams who ship fast and sleep soundly.
+        <div className="flex flex-col gap-3">
+          <Button asChild variant="outline" size="lg" className="w-fit gap-2">
+            <Link to="/demo">
+              See it investigate a real incident <ArrowRight className="size-4" />
+            </Link>
+          </Button>
+          <div className="text-xs text-muted-foreground">
+            No account, no setup — the analysis runs live.
+          </div>
         </div>
       </section>
 

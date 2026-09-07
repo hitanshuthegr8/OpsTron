@@ -360,3 +360,102 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
+
+// ─── Public demo ───────────────────────────────────────────────────────────
+// Unauthenticated on purpose: the demo exists so a visitor with no GitHub
+// account can see the RCA pipeline work. These calls deliberately do NOT go
+// through `authed()` — attaching a token would be meaningless and would send
+// the visitor to /login when there isn't one.
+
+export interface DemoProvenance {
+  simulated: string[];
+  generated_live: string[];
+  note: string;
+}
+
+export interface DemoScenarioSummary {
+  id: string;
+  title: string;
+  summary: string;
+  service: string;
+  severity: string;
+  impact: string;
+  is_default: boolean;
+}
+
+export interface DemoIncident {
+  id: string;
+  title: string;
+  summary: string;
+  service: string;
+  repo: string;
+  severity: string;
+  deployed_at: string;
+  first_error_at: string;
+  impact: string;
+  signals: string[];
+  log_excerpt: string;
+  commits: Array<{
+    sha: string;
+    author: string;
+    date: string;
+    message: string;
+    files_changed: string[];
+    additions?: number;
+    deletions?: number;
+  }>;
+}
+
+export interface DemoAnalysis {
+  scenario_id: string;
+  incident: DemoIncident;
+  report: {
+    root_cause?: string;
+    confidence?: string;
+    contributing_factors?: string[];
+    evidence?: { logs?: string; commits?: string; runbooks?: string };
+    recommended_actions?: string[];
+    timeline?: string;
+    service?: string;
+    analyzed_at?: string;
+  };
+  provenance: DemoProvenance;
+}
+
+export async function fetchDemoScenarios(): Promise<{
+  scenarios: DemoScenarioSummary[];
+  default: string;
+  provenance: DemoProvenance;
+}> {
+  const res = await fetch(`${BACKEND}/demo/scenarios`);
+  if (!res.ok) throw new Error(`Could not load demo scenarios (${res.status})`);
+  return res.json();
+}
+
+export async function fetchDemoIncident(
+  id: string,
+): Promise<{ incident: DemoIncident; provenance: DemoProvenance }> {
+  const res = await fetch(`${BACKEND}/demo/scenarios/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`Could not load incident (${res.status})`);
+  return res.json();
+}
+
+export async function runDemoAnalysis(id: string): Promise<DemoAnalysis> {
+  const res = await fetch(
+    `${BACKEND}/demo/scenarios/${encodeURIComponent(id)}/analyze`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    // Surface the server's own explanation (rate limit, pipeline down) rather
+    // than a generic failure — the distinction matters to a visitor.
+    let detail = `Analysis failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {
+      /* response had no JSON body */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
