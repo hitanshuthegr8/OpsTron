@@ -24,6 +24,13 @@ import os
 
 from app.core.config.settings import settings
 
+# Windows consoles default to cp1252, which raises UnicodeEncodeError on any
+# non-ASCII character in a log message (the check marks and em dashes used
+# throughout this codebase). The traceback that produces looks like a startup
+# failure and buries the real logs, so force UTF-8 on the stream first.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
