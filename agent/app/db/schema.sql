@@ -1,6 +1,12 @@
 -- =============================================================================
 -- OpsTron Database Schema
 -- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New Query)
+--
+-- Safe to re-run. Tables and indexes use IF NOT EXISTS; policies and triggers
+-- have no such form in Postgres, so each is dropped first. Without that, a
+-- second run dies at the first policy with:
+--   ERROR: 42710: policy "..." for table "..." already exists
+-- and every statement after it is skipped, leaving the schema half-applied.
 -- =============================================================================
 
 -- Enable UUID extension
@@ -23,9 +29,11 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 
 -- Users can read/update their own profile
+DROP POLICY IF EXISTS "Users can view own profile" ON user_profiles;
 CREATE POLICY "Users can view own profile" ON user_profiles
   FOR SELECT USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON user_profiles;
 CREATE POLICY "Users can update own profile" ON user_profiles
   FOR UPDATE USING (auth.uid() = id);
 
@@ -56,6 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_deployments_created ON deployments(created_at DES
 ALTER TABLE deployments ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read (for dashboard)
+DROP POLICY IF EXISTS "Deployments are publicly readable" ON deployments;
 CREATE POLICY "Deployments are publicly readable" ON deployments
   FOR SELECT USING (true);
 
@@ -86,6 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_rca_logs_created ON rca_logs(created_at DESC);
 ALTER TABLE rca_logs ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read
+DROP POLICY IF EXISTS "RCA logs are publicly readable" ON rca_logs;
 CREATE POLICY "RCA logs are publicly readable" ON rca_logs
   FOR SELECT USING (true);
 
@@ -114,6 +124,7 @@ CREATE INDEX IF NOT EXISTS idx_commits_created ON commits(created_at DESC);
 ALTER TABLE commits ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read
+DROP POLICY IF EXISTS "Commits are publicly readable" ON commits;
 CREATE POLICY "Commits are publicly readable" ON commits
   FOR SELECT USING (true);
 
@@ -142,6 +153,7 @@ CREATE INDEX IF NOT EXISTS idx_vapi_calls_created ON vapi_calls(created_at DESC)
 ALTER TABLE vapi_calls ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read (transcripts are useful for chatbot)
+DROP POLICY IF EXISTS "VAPI calls are publicly readable" ON vapi_calls;
 CREATE POLICY "VAPI calls are publicly readable" ON vapi_calls
   FOR SELECT USING (true);
 
@@ -169,9 +181,11 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 
 -- Users can only see their own messages
+DROP POLICY IF EXISTS "Users can view own messages" ON chat_messages;
 CREATE POLICY "Users can view own messages" ON chat_messages
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own messages" ON chat_messages;
 CREATE POLICY "Users can insert own messages" ON chat_messages
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
@@ -187,6 +201,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_user_profiles_updated_at ON user_profiles;
 CREATE TRIGGER update_user_profiles_updated_at
   BEFORE UPDATE ON user_profiles
   FOR EACH ROW
