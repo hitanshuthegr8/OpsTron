@@ -189,6 +189,21 @@ function LoginPage() {
               <div className="h-px flex-1 bg-border" />
             </div>
 
+            {/*
+              Also linked from the marketing column, but that column is
+              `hidden lg:flex` — so below 1024px this is the ONLY route to the
+              demo. Without it a visitor on a phone sees a sign-in wall and
+              nothing else.
+            */}
+            <Button asChild variant="outline" className="w-full gap-2">
+              <Link to="/demo">
+                Try the demo instead <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              Watch a real analysis run — no account needed.
+            </p>
+
             <ul className="space-y-2 text-xs text-muted-foreground">
               <li className="flex items-center gap-2">
                 <span className="size-1 rounded-full bg-success" />
