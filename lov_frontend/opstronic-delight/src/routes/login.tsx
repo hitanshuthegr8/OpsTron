@@ -10,7 +10,10 @@ export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       { title: "Sign in to OpsTron" },
-      { name: "description", content: "Sign in with GitHub to deploy autonomous monitoring across your services." },
+      {
+        name: "description",
+        content: "Sign in with GitHub to deploy autonomous monitoring across your services.",
+      },
     ],
   }),
   component: LoginPage,
@@ -47,17 +50,19 @@ function LoginPage() {
         window.location.pathname + (newSearch ? `?${newSearch}` : "") + window.location.hash;
       window.history.replaceState({}, document.title, newUrl);
 
-      initFromOAuthCallback(token).then((ok) => {
-        if (ok) {
-          window.location.replace(appPath("/onboarding"));
-        } else {
+      initFromOAuthCallback(token)
+        .then((ok) => {
+          if (ok) {
+            window.location.replace(appPath("/onboarding"));
+          } else {
+            setBootstrapping(false);
+            setError("Authentication succeeded, but the app could not restore your session.");
+          }
+        })
+        .catch(() => {
           setBootstrapping(false);
-          setError("Authentication succeeded, but the app could not restore your session.");
-        }
-      }).catch(() => {
-        setBootstrapping(false);
-        setError("Authentication succeeded, but the app could not finish sign-in.");
-      });
+          setError("Authentication succeeded, but the app could not finish sign-in.");
+        });
       return;
     }
 
@@ -99,13 +104,26 @@ function LoginPage() {
           </h1>
           <p className="mt-4 max-w-md text-muted-foreground">
             OpsTron watches your Docker containers, links errors to the exact commit that broke
-            production, and pages you via voice call — with a runbook attached — before customers notice.
+            production, and pages you via voice call — with a runbook attached — before customers
+            notice.
           </p>
 
           <div className="mt-10 grid gap-5 max-w-md">
-            <Feature icon={Bot} title="AI Root Cause Analysis" desc="Groq-hosted gpt-oss-120b correlates logs, commits, and runbooks into a root cause." />
-            <Feature icon={Zap} title="Voice paging" desc="Calls on-call engineers when severity crosses your threshold." />
-            <Feature icon={ShieldCheck} title="Runbook-aware" desc="Attaches the right runbook step to every incident automatically." />
+            <Feature
+              icon={Bot}
+              title="AI Root Cause Analysis"
+              desc="Groq-hosted gpt-oss-120b correlates logs, commits, and runbooks into a root cause."
+            />
+            <Feature
+              icon={Zap}
+              title="Voice paging"
+              desc="Calls on-call engineers when severity crosses your threshold."
+            />
+            <Feature
+              icon={ShieldCheck}
+              title="Runbook-aware"
+              desc="Attaches the right runbook step to every incident automatically."
+            />
           </div>
         </div>
 
@@ -188,8 +206,14 @@ function LoginPage() {
 
             <p className="mt-5 text-center text-xs text-muted-foreground">
               By continuing you agree to our{" "}
-              <a className="underline underline-offset-2 hover:text-foreground" href="#">Terms</a> and{" "}
-              <a className="underline underline-offset-2 hover:text-foreground" href="#">Privacy Policy</a>.
+              <a className="underline underline-offset-2 hover:text-foreground" href="#">
+                Terms
+              </a>{" "}
+              and{" "}
+              <a className="underline underline-offset-2 hover:text-foreground" href="#">
+                Privacy Policy
+              </a>
+              .
             </p>
           </div>
 

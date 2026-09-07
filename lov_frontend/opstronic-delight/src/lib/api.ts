@@ -32,9 +32,7 @@ export function appPath(path: string): string {
 }
 
 export function getToken(): string {
-  return typeof window !== "undefined"
-    ? (localStorage.getItem(TOKEN_KEY) ?? "")
-    : "";
+  return typeof window !== "undefined" ? (localStorage.getItem(TOKEN_KEY) ?? "") : "";
 }
 
 export function setToken(token: string) {
@@ -51,10 +49,7 @@ export function clearAuth() {
 }
 
 // ─── Base fetch helper ─────────────────────────────────────────────────────
-async function apiFetch<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const res = await fetch(`${BACKEND}${path}`, {
     ...options,
@@ -83,8 +78,9 @@ async function apiFetch<T>(
       } else if (Array.isArray(parsed?.detail)) {
         // Pydantic validation errors come back as a list of objects
         message = parsed.detail
-          .map((d: { loc?: unknown[]; msg?: string }) =>
-            `${(d.loc ?? []).join(".")}: ${d.msg ?? "invalid"}`,
+          .map(
+            (d: { loc?: unknown[]; msg?: string }) =>
+              `${(d.loc ?? []).join(".")}: ${d.msg ?? "invalid"}`,
           )
           .join("; ");
       }
@@ -143,7 +139,14 @@ export interface RCAReport {
     commit_msg?: string;
     message?: string;
     changed_files?: Array<
-      string | { filename?: string; name?: string; status?: string; additions?: number; deletions?: number }
+      | string
+      | {
+          filename?: string;
+          name?: string;
+          status?: string;
+          additions?: number;
+          deletions?: number;
+        }
     >;
   };
   rca_report?: {
@@ -261,7 +264,11 @@ export async function rotateAgentApiKey(): Promise<string> {
   return data.agent_api_key;
 }
 
-export async function uploadRunbook(file: File, repo = "", service = ""): Promise<{ filename: string; title: string }> {
+export async function uploadRunbook(
+  file: File,
+  repo = "",
+  service = "",
+): Promise<{ filename: string; title: string }> {
   const token = getToken();
   const form = new FormData();
   form.append("file", file);
@@ -293,9 +300,7 @@ export async function uploadRunbook(file: File, repo = "", service = ""): Promis
 
 // ─── Agent ────────────────────────────────────────────────────────────────
 export async function fetchAgentStatus(): Promise<AgentStatusResponse | null> {
-  const agentKey = typeof window !== "undefined"
-    ? (localStorage.getItem(AGENT_KEY) ?? "")
-    : "";
+  const agentKey = typeof window !== "undefined" ? (localStorage.getItem(AGENT_KEY) ?? "") : "";
   if (!agentKey) return null;
   try {
     const res = await fetch(`${BACKEND}/agent/status`, {
@@ -327,9 +332,7 @@ export interface IngestPayload {
 }
 
 export async function ingestTestLog(payload: IngestPayload): Promise<void> {
-  const agentKey = typeof window !== "undefined"
-    ? (localStorage.getItem(AGENT_KEY) ?? "")
-    : "";
+  const agentKey = typeof window !== "undefined" ? (localStorage.getItem(AGENT_KEY) ?? "") : "";
   if (!agentKey) throw new Error("Missing agent API key");
   const errorPayload = {
     service: payload.service,
@@ -441,10 +444,9 @@ export async function fetchDemoIncident(
 }
 
 export async function runDemoAnalysis(id: string): Promise<DemoAnalysis> {
-  const res = await fetch(
-    `${BACKEND}/demo/scenarios/${encodeURIComponent(id)}/analyze`,
-    { method: "POST" },
-  );
+  const res = await fetch(`${BACKEND}/demo/scenarios/${encodeURIComponent(id)}/analyze`, {
+    method: "POST",
+  });
   if (!res.ok) {
     // Surface the server's own explanation (rate limit, pipeline down) rather
     // than a generic failure — the distinction matters to a visitor.

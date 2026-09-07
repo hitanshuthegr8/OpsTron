@@ -162,8 +162,8 @@ function DemoPage() {
             <p className="text-sm text-muted-foreground">
               OpsTron runs four agents over this incident: it extracts error signals from the logs,
               correlates them with recent commits, retrieves matching runbooks by vector search, and
-              synthesises a root cause. Nothing below this point is pre-written — press the button and
-              the model produces it now.
+              synthesises a root cause. Nothing below this point is pre-written — press the button
+              and the model produces it now.
             </p>
             <Button onClick={run} size="lg" className="mt-6 gap-2">
               Run the investigation <ArrowRight className="size-4" />
@@ -278,7 +278,12 @@ function DemoPage() {
           </Section>
 
           {/* 6. RESOLUTION */}
-          <Section step="05" title="Recommended resolution" subtitle="What to do next" icon={Wrench}>
+          <Section
+            step="05"
+            title="Recommended resolution"
+            subtitle="What to do next"
+            icon={Wrench}
+          >
             <ol className="grid gap-3">
               {(report.recommended_actions ?? []).map((a, i) => (
                 <li key={a} className="flex gap-3 rounded-lg border border-border bg-card/40 p-4">
@@ -294,9 +299,9 @@ function DemoPage() {
           <div className="rounded-xl border border-border bg-card/40 p-6">
             <h3 className="text-sm font-semibold">That is the whole loop.</h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              In production the log stream arrives from a Docker sidecar instead of a fixture, and the
-              commit history is fetched live from your repository. Everything after that — the four
-              agents, the retrieval, the synthesis — is what you just watched.
+              In production the log stream arrives from a Docker sidecar instead of a fixture, and
+              the commit history is fetched live from your repository. Everything after that — the
+              four agents, the retrieval, the synthesis — is what you just watched.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <Button asChild variant="outline">
@@ -444,13 +449,7 @@ function ConfidenceBadge({ value }: { value?: string }) {
   );
 }
 
-function Pill({
-  children,
-  tone,
-}: {
-  children: React.ReactNode;
-  tone?: "destructive";
-}) {
+function Pill({ children, tone }: { children: React.ReactNode; tone?: "destructive" }) {
   return (
     <span
       className={`rounded-full border px-3 py-1 text-xs font-medium ${
