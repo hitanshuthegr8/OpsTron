@@ -67,101 +67,143 @@
 }
 
 :root {
-  /* OpsTron — dark, violet, dense data UI (Datadog/Linear caliber) */
-  --radius: 0.625rem;
+  /* ------------------------------------------------------------------
+     OpsTron — monochrome.
+     Every colour is oklch(L 0 0): zero chroma, so the whole UI is a pure
+     greyscale ramp. Hierarchy comes from lightness, border weight and
+     spacing rather than hue, which is why severity still reads without a
+     red: "critical" is the brightest thing on the screen.
+     ------------------------------------------------------------------ */
+  --radius: 0.5rem;
 
-  /* Surfaces */
-  --background: oklch(0.16 0.02 270);
-  --foreground: oklch(0.96 0.01 270);
-  --card: oklch(0.20 0.025 270);
-  --card-foreground: oklch(0.96 0.01 270);
-  --popover: oklch(0.21 0.03 270);
-  --popover-foreground: oklch(0.96 0.01 270);
+  /* Surfaces — four elevation steps, deliberately close together */
+  --background: oklch(0.135 0 0);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.175 0 0);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.19 0 0);
+  --popover-foreground: oklch(0.97 0 0);
 
-  /* Brand: violet */
-  --primary: oklch(0.66 0.22 295);
-  --primary-foreground: oklch(0.99 0.005 270);
-  --primary-glow: oklch(0.74 0.20 310);
+  /* Primary is white: maximum contrast against the near-black ground */
+  --primary: oklch(0.98 0 0);
+  --primary-foreground: oklch(0.14 0 0);
+  --primary-glow: oklch(0.88 0 0);
 
-  --secondary: oklch(0.26 0.03 270);
-  --secondary-foreground: oklch(0.96 0.01 270);
-  --muted: oklch(0.24 0.025 270);
-  --muted-foreground: oklch(0.68 0.03 270);
-  --accent: oklch(0.30 0.06 295);
-  --accent-foreground: oklch(0.97 0.01 270);
+  --secondary: oklch(0.24 0 0);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.21 0 0);
+  --muted-foreground: oklch(0.66 0 0);
+  --accent: oklch(0.27 0 0);
+  --accent-foreground: oklch(0.98 0 0);
 
-  /* Semantic */
-  --destructive: oklch(0.64 0.22 25);
-  --destructive-foreground: oklch(0.99 0.005 270);
-  --success: oklch(0.72 0.16 155);
-  --success-foreground: oklch(0.15 0.02 270);
-  --warning: oklch(0.80 0.16 75);
-  --warning-foreground: oklch(0.18 0.02 270);
-  --info: oklch(0.70 0.14 230);
+  /* Semantic states carry weight, not hue */
+  --destructive: oklch(0.97 0 0);
+  --destructive-foreground: oklch(0.14 0 0);
+  --success: oklch(0.90 0 0);
+  --success-foreground: oklch(0.14 0 0);
+  --warning: oklch(0.80 0 0);
+  --warning-foreground: oklch(0.14 0 0);
+  --info: oklch(0.74 0 0);
 
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.66 0.22 295);
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.85 0 0);
 
-  /* Charts: violet → magenta heatmap */
-  --chart-1: oklch(0.55 0.22 295);
-  --chart-2: oklch(0.65 0.24 310);
-  --chart-3: oklch(0.72 0.22 330);
-  --chart-4: oklch(0.62 0.18 270);
-  --chart-5: oklch(0.78 0.18 350);
+  /* Charts: a greyscale ramp, light to dark */
+  --chart-1: oklch(0.95 0 0);
+  --chart-2: oklch(0.80 0 0);
+  --chart-3: oklch(0.65 0 0);
+  --chart-4: oklch(0.50 0 0);
+  --chart-5: oklch(0.36 0 0);
 
-  /* Sidebar */
-  --sidebar: oklch(0.18 0.022 270);
-  --sidebar-foreground: oklch(0.92 0.01 270);
-  --sidebar-primary: oklch(0.66 0.22 295);
-  --sidebar-primary-foreground: oklch(0.99 0.005 270);
-  --sidebar-accent: oklch(0.26 0.05 295);
-  --sidebar-accent-foreground: oklch(0.97 0.01 270);
-  --sidebar-border: oklch(1 0 0 / 7%);
-  --sidebar-ring: oklch(0.66 0.22 295);
+  --sidebar: oklch(0.155 0 0);
+  --sidebar-foreground: oklch(0.93 0 0);
+  --sidebar-primary: oklch(0.98 0 0);
+  --sidebar-primary-foreground: oklch(0.14 0 0);
+  --sidebar-accent: oklch(0.25 0 0);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.85 0 0);
 
-  /* Effects */
-  --gradient-primary: linear-gradient(135deg, var(--primary), var(--primary-glow));
-  --gradient-surface: linear-gradient(180deg, oklch(0.22 0.03 275), oklch(0.18 0.025 270));
-  --gradient-glow: radial-gradient(60% 60% at 50% 0%, oklch(0.66 0.22 295 / 0.25), transparent 70%);
-  --shadow-elegant: 0 10px 40px -12px oklch(0.30 0.15 295 / 0.45);
-  --shadow-glow: 0 0 0 1px oklch(0.66 0.22 295 / 0.35), 0 8px 30px -8px oklch(0.66 0.22 295 / 0.45);
+  /* Effects — light instead of colour */
+  --gradient-primary: linear-gradient(135deg, oklch(0.99 0 0), oklch(0.80 0 0));
+  --gradient-surface: linear-gradient(180deg, oklch(0.20 0 0), oklch(0.155 0 0));
+  --gradient-glow: radial-gradient(60% 60% at 50% 0%, oklch(1 0 0 / 0.10), transparent 70%);
+  --shadow-elegant: 0 12px 40px -14px oklch(0 0 0 / 0.75);
+  --shadow-glow: 0 0 0 1px oklch(1 0 0 / 0.14), 0 10px 34px -12px oklch(0 0 0 / 0.7);
   --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  /* <html class="dark"> is always set, so this must match :root exactly.
+     Leaving the old violet values here would silently override everything. */
+  /* ------------------------------------------------------------------
+     OpsTron — monochrome.
+     Every colour is oklch(L 0 0): zero chroma, so the whole UI is a pure
+     greyscale ramp. Hierarchy comes from lightness, border weight and
+     spacing rather than hue, which is why severity still reads without a
+     red: "critical" is the brightest thing on the screen.
+     ------------------------------------------------------------------ */
+  --radius: 0.5rem;
+
+  /* Surfaces — four elevation steps, deliberately close together */
+  --background: oklch(0.135 0 0);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.175 0 0);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.19 0 0);
+  --popover-foreground: oklch(0.97 0 0);
+
+  /* Primary is white: maximum contrast against the near-black ground */
+  --primary: oklch(0.98 0 0);
+  --primary-foreground: oklch(0.14 0 0);
+  --primary-glow: oklch(0.88 0 0);
+
+  --secondary: oklch(0.24 0 0);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.21 0 0);
+  --muted-foreground: oklch(0.66 0 0);
+  --accent: oklch(0.27 0 0);
+  --accent-foreground: oklch(0.98 0 0);
+
+  /* Semantic states carry weight, not hue */
+  --destructive: oklch(0.97 0 0);
+  --destructive-foreground: oklch(0.14 0 0);
+  --success: oklch(0.90 0 0);
+  --success-foreground: oklch(0.14 0 0);
+  --warning: oklch(0.80 0 0);
+  --warning-foreground: oklch(0.14 0 0);
+  --info: oklch(0.74 0 0);
+
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.85 0 0);
+
+  /* Charts: a greyscale ramp, light to dark */
+  --chart-1: oklch(0.95 0 0);
+  --chart-2: oklch(0.80 0 0);
+  --chart-3: oklch(0.65 0 0);
+  --chart-4: oklch(0.50 0 0);
+  --chart-5: oklch(0.36 0 0);
+
+  --sidebar: oklch(0.155 0 0);
+  --sidebar-foreground: oklch(0.93 0 0);
+  --sidebar-primary: oklch(0.98 0 0);
+  --sidebar-primary-foreground: oklch(0.14 0 0);
+  --sidebar-accent: oklch(0.25 0 0);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.85 0 0);
+
+  /* Effects — light instead of colour */
+  --gradient-primary: linear-gradient(135deg, oklch(0.99 0 0), oklch(0.80 0 0));
+  --gradient-surface: linear-gradient(180deg, oklch(0.20 0 0), oklch(0.155 0 0));
+  --gradient-glow: radial-gradient(60% 60% at 50% 0%, oklch(1 0 0 / 0.10), transparent 70%);
+  --shadow-elegant: 0 12px 40px -14px oklch(0 0 0 / 0.75);
+  --shadow-glow: 0 0 0 1px oklch(1 0 0 / 0.14), 0 10px 34px -12px oklch(0 0 0 / 0.7);
+  --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
 }
 
 @layer base {

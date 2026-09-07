@@ -305,20 +305,31 @@ function DemoPage() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-background">
-      <header className="border-b border-border">
+      {/* A faint top glow keeps a flat monochrome page from reading as dead. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[image:var(--gradient-glow)]"
+      />
+
+      <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
-          <Link to="/login" className="flex items-center gap-2">
-            <div className="grid size-8 place-items-center rounded-md bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]">
+          <Link to="/login" className="group flex items-center gap-2.5">
+            <div className="grid size-8 place-items-center rounded-md bg-[image:var(--gradient-primary)] text-primary-foreground">
               <Activity className="size-4" />
             </div>
             <span className="font-semibold tracking-tight">OpsTron</span>
           </Link>
-          <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-foreground opacity-60" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-foreground" />
+            </span>
             Live demo
           </span>
         </div>
       </header>
-      <div className="mx-auto grid max-w-3xl gap-8 px-6 py-10">{children}</div>
+
+      <div className="relative mx-auto grid max-w-3xl gap-6 px-6 py-12">{children}</div>
     </main>
   );
 }
@@ -374,26 +385,36 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card/60 p-6 shadow-[var(--shadow-elegant)] backdrop-blur">
-      <div className="flex items-center gap-3">
+    // The left rail plus the numeral turns five stacked cards into a visible
+    // sequence, which is the whole point of the page: one thing leads to the next.
+    <section className="relative rounded-xl border border-border bg-card/60 shadow-[var(--shadow-elegant)] backdrop-blur">
+      <div
+        aria-hidden
+        className={`absolute inset-y-0 left-0 w-px ${
+          tone === "destructive" ? "bg-foreground/50" : "bg-border"
+        }`}
+      />
+      <div className="flex items-start gap-4 border-b border-border px-6 py-4">
         <div
-          className={`grid size-9 place-items-center rounded-md ${
+          className={`grid size-9 shrink-0 place-items-center rounded-md border ${
             tone === "destructive"
-              ? "bg-destructive/10 text-destructive"
-              : "bg-primary/10 text-primary"
+              ? "border-foreground/30 bg-foreground/10 text-foreground"
+              : "border-border bg-muted/60 text-muted-foreground"
           }`}
         >
           <Icon className="size-4" />
         </div>
-        <div>
-          <div className="text-[11px] font-medium tracking-widest text-muted-foreground">
-            {step}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
+              {step}
+            </span>
+            <h2 className="truncate text-base font-semibold tracking-tight">{title}</h2>
           </div>
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
         </div>
-        <span className="ml-auto text-xs text-muted-foreground">{subtitle}</span>
       </div>
-      <div className="mt-5">{children}</div>
+      <div className="px-6 py-5">{children}</div>
     </section>
   );
 }
@@ -410,17 +431,47 @@ function Evidence({ label, body }: { label: string; body?: string }) {
   );
 }
 
+/**
+ * Confidence, expressed in a monochrome palette.
+ *
+ * With no hue available, the three levels are separated by contrast: high is
+ * solid white on black, medium is outlined, low is dim. Filled reads as more
+ * emphatic than outlined, which preserves the ranking a colour ramp would
+ * normally carry. The dots repeat the level non-redundantly for anyone who
+ * finds contrast alone ambiguous.
+ */
 function ConfidenceBadge({ value }: { value?: string }) {
   const v = (value ?? "unknown").toLowerCase();
-  const tone =
-    v === "high"
-      ? "border-primary/40 bg-primary/10 text-primary"
-      : v === "medium"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
-        : "border-border bg-muted text-muted-foreground";
+  const filled = v === "high";
+  const dots = v === "high" ? 3 : v === "medium" ? 2 : 1;
+
   return (
-    <span className={`rounded-full border px-3 py-1 text-xs font-medium ${tone}`}>
-      Confidence: {v}
+    <span
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
+        filled
+          ? "border-primary bg-primary text-primary-foreground"
+          : v === "medium"
+            ? "border-foreground/40 text-foreground"
+            : "border-border text-muted-foreground"
+      }`}
+    >
+      <span className="flex gap-0.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className={`size-1.5 rounded-full ${
+              i < dots
+                ? filled
+                  ? "bg-primary-foreground"
+                  : "bg-foreground"
+                : filled
+                  ? "bg-primary-foreground/30"
+                  : "bg-foreground/20"
+            }`}
+          />
+        ))}
+      </span>
+      {v} confidence
     </span>
   );
 }
