@@ -20,6 +20,7 @@ import {
   type DemoIncident,
   type DemoProvenance,
 } from "@/lib/api";
+import { CommitCard, LogCard, RunbookCard, StepRow } from "@/components/demo-parts";
 
 export const Route = createFileRoute("/demo")({
   head: () => ({
@@ -37,28 +38,11 @@ export const Route = createFileRoute("/demo")({
 
 const SCENARIO_ID = "pool-exhaustion";
 
-/**
- * The investigation steps shown while the request is in flight.
- *
- * These mirror the four stages the orchestrator actually runs
- * (LogAgent -> CommitAgent -> RunbookAgent -> SynthesizerAgent). They are a
- * progress indication, not a live trace: the backend returns one response at
- * the end rather than streaming per-stage events, so the timings here are
- * indicative. Labelled as such in the UI so nothing is overstated.
- */
-const STAGES = [
-  { label: "Parsing log stream for error signals", icon: FileText },
-  { label: "Correlating with recent deployments", icon: GitCommit },
-  { label: "Searching runbooks for matching procedures", icon: Search },
-  { label: "Synthesising root cause analysis", icon: Activity },
-];
-
 function DemoPage() {
   const [incident, setIncident] = useState<DemoIncident | null>(null);
   const [provenance, setProvenance] = useState<DemoProvenance | null>(null);
   const [analysis, setAnalysis] = useState<DemoAnalysis | null>(null);
   const [running, setRunning] = useState(false);
-  const [stage, setStage] = useState(0);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
 
@@ -71,18 +55,10 @@ function DemoPage() {
       .catch((e) => setLoadError(e.message));
   }, []);
 
-  // Advance the stage indicator while the single request is in flight.
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 2200);
-    return () => clearInterval(t);
-  }, [running]);
-
   const run = useCallback(async () => {
     setRunning(true);
     setError("");
     setAnalysis(null);
-    setStage(0);
     try {
       setAnalysis(await runDemoAnalysis(SCENARIO_ID));
     } catch (e) {
@@ -114,6 +90,9 @@ function DemoPage() {
   }
 
   const report = analysis?.report;
+  // Taken from the measured runbooks step rather than parsed out of the
+  // model's prose, so the cards show exactly what retrieval returned.
+  const runbookMatches = analysis?.steps.find((s) => s.step === "runbooks")?.matches ?? [];
 
   return (
     <Shell>
@@ -175,37 +154,9 @@ function DemoPage() {
         )}
 
         {running && (
-          <div className="grid gap-3">
-            {STAGES.map((s, i) => {
-              const Icon = s.icon;
-              const done = i < stage;
-              const active = i === stage;
-              return (
-                <div
-                  key={s.label}
-                  className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
-                    active
-                      ? "border-primary/50 bg-primary/5"
-                      : done
-                        ? "border-border bg-muted/30 text-muted-foreground"
-                        : "border-border/60 text-muted-foreground/60"
-                  }`}
-                >
-                  {done ? (
-                    <CheckCircle2 className="size-4 text-primary" />
-                  ) : active ? (
-                    <Loader2 className="size-4 animate-spin text-primary" />
-                  ) : (
-                    <Icon className="size-4" />
-                  )}
-                  {s.label}
-                </div>
-              );
-            })}
-            <p className="mt-1 text-xs text-muted-foreground">
-              Stage indicator reflects the pipeline's four agents; the backend returns one response
-              when synthesis completes.
-            </p>
+          <div className="flex items-center gap-3 rounded-lg border border-primary/50 bg-primary/5 px-4 py-4 text-sm">
+            <Loader2 className="size-4 animate-spin text-primary" />
+            Running the pipeline — four agents over the incident above.
           </div>
         )}
 
@@ -219,12 +170,18 @@ function DemoPage() {
         )}
 
         {analysis && !running && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle2 className="size-4 text-primary" />
-            Investigation complete — four agents ran over the incident above.
-            <Button variant="ghost" size="sm" onClick={run} className="ml-auto">
-              Run again
-            </Button>
+          <div className="grid gap-2">
+            {analysis.steps.map((s) => (
+              <StepRow key={s.step} step={s} />
+            ))}
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 className="size-3.5 text-primary" />
+              Four agents, {(analysis.total_duration_ms / 1000).toFixed(1)}s total. Every duration
+              above was measured server-side during this run.
+              <Button variant="ghost" size="sm" onClick={run} className="ml-auto">
+                Run again
+              </Button>
+            </div>
           </div>
         )}
       </Section>
@@ -234,14 +191,33 @@ function DemoPage() {
           {/* 3. EVIDENCE */}
           <Section step="03" title="Evidence" subtitle="What it found" icon={FileText}>
             <div className="grid gap-3">
-              <Evidence label="From the logs" body={report.evidence?.logs} />
-              <Evidence label="From the commit history" body={report.evidence?.commits} />
-              <Evidence label="From the runbooks" body={report.evidence?.runbooks} />
+              <LogCard log={incident.log_excerpt} />
+
+              {incident.commits.map((c) => (
+                <CommitCard
+                  key={c.sha}
+                  commit={c}
+                  deployedAt={incident.deployed_at}
+                  firstErrorAt={incident.first_error_at}
+                  // The suspect marker follows the model's conclusion rather than
+                  // a hardcoded sha, so a different verdict relabels the card.
+                  suspect={(report.root_cause ?? "").includes(c.sha)}
+                />
+              ))}
+
+              {!!runbookMatches.length && <RunbookCard matches={runbookMatches} />}
             </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Runbook matches come from a vector search over the real runbook corpus in this
-              repository — not from the incident fixture.
-            </p>
+
+            <details className="mt-4">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+                Show the raw evidence the model was given
+              </summary>
+              <div className="mt-3 grid gap-3">
+                <Evidence label="From the logs" body={report.evidence?.logs} />
+                <Evidence label="From the commit history" body={report.evidence?.commits} />
+                <Evidence label="From the runbooks" body={report.evidence?.runbooks} />
+              </div>
+            </details>
           </Section>
 
           {/* 4 + 5. ROOT CAUSE + CONFIDENCE */}

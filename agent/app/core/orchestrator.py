@@ -17,7 +17,8 @@ Usage:
 """
 
 import logging
-from typing import Dict, Any, Optional
+import time
+from typing import Any, Callable, Dict, Optional
 
 from app.core.agents.log_agent import LogAgent
 from app.core.agents.commit_agent import CommitAgent
@@ -41,6 +42,7 @@ class RCAOrchestrator:
         log_text: str,
         metadata: Optional[Dict[str, Any]] = None,
         commit_analysis_override: Optional[Dict[str, Any]] = None,
+        on_step: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         """
         Run the full RCA pipeline and return a structured report.
@@ -54,18 +56,39 @@ class RCAOrchestrator:
                 fetching it from GitHub. Used by the demo, where live commits
                 from an unrelated repository would be incoherent evidence. When
                 None (every production path) the CommitAgent runs as before.
+            on_step: Called after each stage with its name, measured duration and
+                real output. Lets a caller surface what each agent actually found
+                instead of guessing at progress. Production paths pass nothing and
+                pay nothing.
 
         Returns:
             dict: Structured RCA report from the SynthesizerAgent.
         """
         logger.info("Starting RCA pipeline")
         metadata = metadata or {}
+
+        def _emit(name: str, started: float, summary: Dict[str, Any]) -> None:
+            if on_step is None:
+                return
+            on_step({
+                "step": name,
+                "duration_ms": int((time.perf_counter() - started) * 1000),
+                **summary,
+            })
+
         github_token = str(metadata.pop("_github_token", "") or "")
 
         # Step 1: Extract error signals from logs
         logger.info("Step 1: Analyzing logs")
+        _t = time.perf_counter()
         try:
             log_analysis = await self.log_agent.analyze(log_text)
+            _emit("logs", _t, {
+                "label": "Parsed the log stream",
+                "signals": log_analysis.get("error_signals", []),
+                "key_errors": log_analysis.get("key_errors", [])[:4],
+                "stack_traces": len(log_analysis.get("stack_traces", []) or []),
+            })
         except Exception as e:
             logger.error(f"LogAgent failed: {e}", exc_info=True)
             raise
@@ -74,10 +97,21 @@ class RCAOrchestrator:
         if commit_analysis_override is not None:
             logger.info("Step 2: Using supplied commit data (skipping GitHub fetch)")
             commit_analysis = commit_analysis_override
+            _emit("commits", time.perf_counter(), {
+                "label": "Correlated recent deployments",
+                "count": len(commit_analysis.get("commits", [])),
+                "source": "supplied",
+            })
         else:
             logger.info("Step 2: Fetching commits")
+            _t = time.perf_counter()
             try:
                 commit_analysis = await self.commit_agent.analyze(repo, github_token=github_token)
+                _emit("commits", _t, {
+                    "label": "Fetched recent commits",
+                    "count": len(commit_analysis.get("commits", [])),
+                    "source": "github",
+                })
             except Exception as e:
                 logger.error(f"CommitAgent failed: {e}", exc_info=True)
                 commit_analysis = {"error": str(e), "commits": []}
@@ -86,7 +120,13 @@ class RCAOrchestrator:
         logger.info("Step 3: Searching runbooks")
         try:
             error_signals = log_analysis.get("error_signals", [])
+            _t = time.perf_counter()
             runbook_results = await self.runbook_agent.search(error_signals)
+            _emit("runbooks", _t, {
+                "label": "Searched the runbook corpus",
+                "matches": [r.get("title") for r in runbook_results],
+                "query_signals": error_signals,
+            })
         except Exception as e:
             logger.error(f"RunbookAgent failed: {e}", exc_info=True)
             runbook_results = []
@@ -94,6 +134,7 @@ class RCAOrchestrator:
         # Step 4: Synthesize everything into a final RCA report
         logger.info("Step 4: Synthesizing root cause analysis")
         try:
+            _t = time.perf_counter()
             rca_report = await self.synthesizer_agent.synthesize(
                 service=service,
                 log_analysis=log_analysis,
@@ -101,6 +142,11 @@ class RCAOrchestrator:
                 runbook_results=runbook_results,
                 metadata=metadata,
             )
+            _emit("synthesis", _t, {
+                "label": "Synthesised the root cause",
+                "confidence": rca_report.get("confidence"),
+                "actions": len(rca_report.get("recommended_actions", []) or []),
+            })
         except Exception as e:
             logger.error(f"SynthesizerAgent failed: {e}", exc_info=True)
             raise

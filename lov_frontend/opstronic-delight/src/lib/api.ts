@@ -409,9 +409,27 @@ export interface DemoIncident {
   }>;
 }
 
+/** One pipeline stage, as measured by the backend. Never fabricated client-side. */
+export interface DemoStep {
+  step: "logs" | "commits" | "runbooks" | "synthesis";
+  label: string;
+  duration_ms: number;
+  signals?: string[];
+  key_errors?: string[];
+  stack_traces?: number;
+  count?: number;
+  source?: string;
+  matches?: string[];
+  query_signals?: string[];
+  confidence?: string;
+  actions?: number;
+}
+
 export interface DemoAnalysis {
   scenario_id: string;
   incident: DemoIncident;
+  steps: DemoStep[];
+  total_duration_ms: number;
   report: {
     root_cause?: string;
     confidence?: string;

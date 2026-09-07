@@ -119,6 +119,12 @@ async def analyze_scenario(scenario_id: str, request: Request) -> Dict[str, Any]
         )
 
     logger.info(f"[DEMO] Running RCA for scenario={scenario_id}")
+
+    # Collected as each agent finishes, so the UI can report what every stage
+    # actually found and how long it actually took, rather than animating a
+    # guess. Populated by the orchestrator's on_step hook.
+    steps: list[Dict[str, Any]] = []
+
     try:
         report = await orchestrator.analyze(
             service=scenario["service"],
@@ -132,6 +138,7 @@ async def analyze_scenario(scenario_id: str, request: Request) -> Dict[str, Any]
             },
             # Seeded rather than fetched: see app/demo/scenarios.py for why.
             commit_analysis_override={"commits": scenario["commits"]},
+            on_step=steps.append,
         )
     except Exception as exc:
         # Surface the failure rather than substituting a canned report. A demo
@@ -151,5 +158,7 @@ async def analyze_scenario(scenario_id: str, request: Request) -> Dict[str, Any]
         "scenario_id": scenario_id,
         "incident": briefing(scenario),
         "report": report,
+        "steps": steps,
+        "total_duration_ms": sum(s.get("duration_ms", 0) for s in steps),
         "provenance": PROVENANCE,
     }
