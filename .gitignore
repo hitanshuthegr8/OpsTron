@@ -70,3 +70,11 @@ projects/sample/
 !lov_frontend/opstronic-delight/src/lib/
 !lov_frontend/opstronic-delight/src/lib/**
 
+# Environment files — the bare `*.env` glob above does NOT match these, because
+# it only matches names ENDING in .env. A backup like `.env.bak-20260907` or
+# `.env.local` slipped straight past it and sat untracked in the repo root,
+# one `git add .` away from publishing live credentials.
+.env
+.env.*
+*.env.*
+!.env.example

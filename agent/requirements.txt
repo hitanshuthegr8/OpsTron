@@ -39,6 +39,10 @@ twilio==9.4.0
 python-multipart==0.0.20
 python-dotenv==1.0.1
 
+# Testing (dev). httpx is already required above and backs FastAPI's TestClient.
+pytest>=8.0
+pytest-asyncio>=0.24
+
 # Supabase (Persistent Storage)
 # 2.10 validates the API key against a JWT regex and rejects Supabase's current
 # `sb_secret_...` keys with a bare "Invalid API key" before any network call.
