@@ -40,6 +40,7 @@ class RCAOrchestrator:
         repo: str,
         log_text: str,
         metadata: Optional[Dict[str, Any]] = None,
+        commit_analysis_override: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Run the full RCA pipeline and return a structured report.
@@ -49,6 +50,10 @@ class RCAOrchestrator:
             repo:     GitHub repo to pull recent commits from (e.g. "owner/repo").
             log_text: Raw log content to analyze.
             metadata: Optional dict with extra context (env, endpoint, deployment info).
+            commit_analysis_override: Supply commit data directly instead of
+                fetching it from GitHub. Used by the demo, where live commits
+                from an unrelated repository would be incoherent evidence. When
+                None (every production path) the CommitAgent runs as before.
 
         Returns:
             dict: Structured RCA report from the SynthesizerAgent.
@@ -66,12 +71,16 @@ class RCAOrchestrator:
             raise
 
         # Step 2: Fetch recent commits (failure is non-fatal — returns empty commits)
-        logger.info("Step 2: Fetching commits")
-        try:
-            commit_analysis = await self.commit_agent.analyze(repo, github_token=github_token)
-        except Exception as e:
-            logger.error(f"CommitAgent failed: {e}", exc_info=True)
-            commit_analysis = {"error": str(e), "commits": []}
+        if commit_analysis_override is not None:
+            logger.info("Step 2: Using supplied commit data (skipping GitHub fetch)")
+            commit_analysis = commit_analysis_override
+        else:
+            logger.info("Step 2: Fetching commits")
+            try:
+                commit_analysis = await self.commit_agent.analyze(repo, github_token=github_token)
+            except Exception as e:
+                logger.error(f"CommitAgent failed: {e}", exc_info=True)
+                commit_analysis = {"error": str(e), "commits": []}
 
         # Step 3: Search runbooks for relevant procedures
         logger.info("Step 3: Searching runbooks")

@@ -98,6 +98,8 @@ class Settings(BaseSettings):
     INCIDENT_RCA_COOLDOWN_MINUTES: int = 15
     INGEST_RATE_LIMIT_PER_MINUTE: int = 60
     RCA_RATE_LIMIT_PER_MINUTE: int = 6
+    # Public demo: each run is a real LLM call, so cap it per client IP.
+    DEMO_RATE_LIMIT_PER_MINUTE: int = 4
 
     def is_production(self) -> bool:
         return self.ENVIRONMENT.lower() in {"production", "prod"}

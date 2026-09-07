@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from app.models.error_models import ErrorPayload, IngestResponse, DeploymentPayload, DeploymentResponse, AgentLogPayload, AgentLogResponse
 from app.models.event_models import AgentEventPayload, AgentEventResponse
 from app.core.config.settings import settings
+from app.utils.rate_limit import SlidingWindowLimiter
 from app.core.runtime import event_engine, orchestrator, watch_manager
 from app.utils.github_api import GitHubClient
 from app.utils.security import redact_text, truncate_text
@@ -34,24 +35,8 @@ RCA_HISTORY: List[Dict[str, Any]] = []
 MAX_HISTORY_SIZE = 50
 
 
-class SlidingWindowLimiter:
-    def __init__(self):
-        self.events: Dict[str, List[float]] = {}
-
-    def allow(self, key: str, limit: int, window_seconds: int = 60) -> bool:
-        now = time.time()
-        bucket = [
-            ts for ts in self.events.get(key, [])
-            if now - ts < window_seconds
-        ]
-        if len(bucket) >= limit:
-            self.events[key] = bucket
-            return False
-        bucket.append(now)
-        self.events[key] = bucket
-        return True
-
-
+# Moved to app/utils/rate_limit.py when the demo router needed the same limiter.
+# Re-exported here so existing references keep working.
 rate_limiter = SlidingWindowLimiter()
 
 # =============================================================================
