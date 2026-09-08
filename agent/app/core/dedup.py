@@ -15,12 +15,26 @@ class EventDeduplicator:
         self._seen: Dict[str, float] = {}
 
     def is_duplicate(self, event: EnrichedEvent) -> bool:
+        """
+        True if an identical event was already admitted inside the window.
+
+        The timestamp is stamped only when an event is ADMITTED. Stamping on
+        every call — including duplicates — turns the fixed window into a
+        sliding one that never expires: while a crashloop keeps emitting, every
+        check sees a fresh `last_seen`, so exactly one event is ever admitted
+        and the cooldown layer below is never reached. That means no
+        re-notification for an outage that is still ongoing.
+        """
         now = time.time()
         self._cleanup(now)
         key = self._key(event)
         last_seen = self._seen.get(key)
+
+        if last_seen is not None and now - last_seen <= self.window_seconds:
+            return True
+
         self._seen[key] = now
-        return last_seen is not None and now - last_seen <= self.window_seconds
+        return False
 
     def _cleanup(self, now: float) -> None:
         expired = [

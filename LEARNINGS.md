@@ -273,10 +273,10 @@ Most "metrics" on a project are **design choices**, not outcomes:
 
 | Choice (you decided it) | Result (you measured it) |
 |---|---|
-| 5 confidence signals | 92% retrieval precision@1 |
-| 60-second dedup window | 22:1 event collapse under storm |
-| 28 API endpoints | 231 of 242 events suppressed |
-| 5 severity levels | 120 pages reduced to 3 |
+| 5 confidence signals | 8/12 retrieval precision@1 |
+| 60-second dedup window | 20:1 event collapse under storm |
+| 31 API endpoints | 234 of 246 events suppressed |
+| 5 severity levels | 246 events reduced to 3 pages |
 
 Both belong on a resume, but they answer different questions. A choice shows you designed a
 system. A **result** shows the design worked. Only the second survives "so did it actually
@@ -284,13 +284,21 @@ help?"
 
 Measured on this project:
 
-- **Runbook retrieval precision@1: 92% (11/12).** Twelve realistic incident phrasings, each
-  with a known-correct runbook. The single miss — "502 bad gateway, no healthy upstreams"
-  matched *api_timeout* instead of *service_down* — is genuinely ambiguous, which is a more
-  honest answer than a suspicious 100%.
-- **Event storm collapse: 22:1.** 242 raw events from three crashlooping containers reduced
-  to 11 reaching the RCA layer — 95.5% suppressed.
-- **Alert fatigue: 120 pages down to 3**, via the 5-minute per-service cooldown.
+- **Runbook retrieval precision@1: 8/12 (67%).** Twelve realistic incident phrasings, each
+  with a known-correct runbook, now committed at `agent/benchmarks/runbook_queries.json` and
+  re-runnable. Four are deliberately ambiguous; retrieval gets **8/8 on the clear-cut queries
+  and 0/4 on the ambiguous ones**. Every miss returns *api_timeout*, which is the diagnosis:
+  that runbook is broader than the others and dominates similarity for anything
+  latency-shaped. Corpus imbalance, not model failure.
+- **Event storm collapse: 20:1.** 246 raw events from three crashlooping containers reduced
+  to 12 reaching the RCA layer, then 3 pages after the per-service cooldown.
+
+> **Correction (Sep 2026).** This section previously read "92% (11/12)" and "22:1 / 242 -> 11"
+> from a hand-run measurement with no committed harness. Building the harness changed both
+> numbers. The retrieval set here is harder by construction — four ambiguous queries out of
+> twelve — so 67% and 92% are not measuring the same thing; the lesson is that a precision
+> figure is meaningless without its query set. The dedup number moved for a better reason: the
+> harness exposed a real bug (entry 20).
 
 > **Rule:** design a small evaluation you can re-run on demand. Twelve hand-labelled queries
 > took ten minutes to write and turned an unverifiable claim into a defensible one. And keep
@@ -356,3 +364,35 @@ the "newer" local version would have silently broken a feature that worked.
 > both directions. "Mine is newer" is an assumption about time; what matters is content.
 > And resolve conflicts by which side is *stronger*, not by which side is yours: `--ours`
 > on a whole file silently discards every other change the other side made to it.
+
+---
+
+## 20. A number you cannot re-run is a claim, not a measurement
+
+Two figures sat in this file for weeks: 92% retrieval precision@1, and 22:1 event
+suppression. Both were honestly measured by hand. Neither had a committed harness, so
+neither could be checked — by me, or by anyone reading the repo.
+
+Writing the harnesses changed both, for two very different reasons.
+
+**Retrieval moved because the query set moved.** The new set includes four deliberately
+ambiguous queries out of twelve, so 67% and 92% are not the same measurement. That is the
+lesson: a precision figure without its query set is not a result, it is a mood. The useful
+finding was not the number but the pattern — every miss returned the same runbook, because
+one document is broader than the others and dominates similarity for anything
+latency-shaped. Corpus imbalance is invisible until you look at *which* queries fail.
+
+**Dedup moved because there was a bug.** `is_duplicate()` stamped its timestamp on every
+call, including duplicates, so a 60-second fixed window behaved as a sliding one that never
+expired. While a crashloop kept emitting, exactly one event was ever admitted — and because
+nothing passed dedup, the cooldown layer beneath it was unreachable. A service down for six
+hours produced one alert and never mentioned it again. The one-line fix restored 246 -> 12
+-> 3 and made the second layer meaningful.
+
+Both were found in the same afternoon, by the same act: trying to reproduce a number I had
+already written down.
+
+> **Rule:** any figure you would put on a CV must ship with the command that regenerates it.
+> Not because people will run it, but because writing the harness is how you discover that
+> the number is wrong — and it is far better to find that yourself than to be asked about it
+> by someone who just read your code.

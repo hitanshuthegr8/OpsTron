@@ -1,0 +1,88 @@
+{
+  "description": "Labelled benchmark for runbook retrieval precision@1.",
+  "method": "Each query is a phrasing a responder might realistically paste from an incident. `expected` is the runbook a human on-call engineer would reach for. Retrieval is scored on the top-1 result only.",
+  "honesty_notes": [
+    "The label space is 3 runbooks, so random guessing scores ~33%. Read the headline number against that floor, not against 0%.",
+    "Queries are NOT cherry-picked for easy wins. Four are deliberately ambiguous (marked hard: true) because a benchmark that only contains obvious cases measures nothing.",
+    "`ambiguity_note` records where a human could reasonably disagree with the label. A miss on those is a weaker signal than a miss on a clear-cut query."
+  ],
+  "corpus": ["api_timeout", "db_deadlock", "service_down"],
+  "queries": [
+    {
+      "id": "q01",
+      "query": "TimeoutError upstream request exceeded 5000ms deadline",
+      "expected": "api_timeout",
+      "hard": false
+    },
+    {
+      "id": "q02",
+      "query": "deadlock detected transaction rolled back waiting for lock",
+      "expected": "db_deadlock",
+      "hard": false
+    },
+    {
+      "id": "q03",
+      "query": "container exited with code 1 and restarted 5 times",
+      "expected": "service_down",
+      "hard": false
+    },
+    {
+      "id": "q04",
+      "query": "read timed out waiting for response from payments service",
+      "expected": "api_timeout",
+      "hard": false
+    },
+    {
+      "id": "q05",
+      "query": "process killed health check failing on port 8080",
+      "expected": "service_down",
+      "hard": false
+    },
+    {
+      "id": "q06",
+      "query": "ERROR could not obtain lock on row concurrent update conflict",
+      "expected": "db_deadlock",
+      "hard": false
+    },
+    {
+      "id": "q07",
+      "query": "502 bad gateway no healthy upstreams available",
+      "expected": "service_down",
+      "hard": true,
+      "ambiguity_note": "A 502 with no healthy upstreams is caused by instances being down, but the surface symptom reads like a gateway/timeout problem. This is the known failure case."
+    },
+    {
+      "id": "q08",
+      "query": "requests queueing connection pool exhausted waiters climbing",
+      "expected": "db_deadlock",
+      "hard": true,
+      "ambiguity_note": "Pool exhaustion is a database contention symptom, but presents as latency, so api_timeout is a defensible human answer too."
+    },
+    {
+      "id": "q09",
+      "query": "service unavailable after deploy pods not becoming ready",
+      "expected": "service_down",
+      "hard": false
+    },
+    {
+      "id": "q10",
+      "query": "slow queries blocking each other throughput collapsed",
+      "expected": "db_deadlock",
+      "hard": true,
+      "ambiguity_note": "Mutual blocking implies deadlock, but 'slow queries' alone could be plain contention rather than a true deadlock cycle."
+    },
+    {
+      "id": "q11",
+      "query": "gateway timeout calling internal inventory endpoint",
+      "expected": "api_timeout",
+      "hard": false
+    },
+    {
+      "id": "q12",
+      "query": "instance stopped responding to requests and dropped out of the load balancer",
+      "expected": "service_down",
+      "hard": true,
+      "ambiguity_note": "Dropping out of a load balancer is a health-check consequence; a reader focused on 'stopped responding' might reach for api_timeout."
+    }
+  ]
+}
