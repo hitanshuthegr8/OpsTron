@@ -435,3 +435,31 @@ Mastery levels: **Understand** (can explain) · **Read** (can follow the code) �
 **Mastery:** Understand -> Modify
 
 **Exercise.** Inspect `<html>` in DevTools and find `--background`. Identify which block supplies the winning value, and what happens if you delete the `dark` class from the element.
+
+---
+
+## 19. Writing the harness is how you find out the number is wrong
+
+**Problem.** Two figures had sat in `LEARNINGS.md` for weeks — 92% retrieval precision@1, and 22:1 event suppression. Both were honestly measured by hand. Neither could be re-run. Building the harnesses changed both.
+
+**Root cause.** Two different causes, which is the interesting part.
+
+*Retrieval* moved because the query set moved: the committed set has four deliberately ambiguous queries out of twelve, so 8/12 and 92% are not disagreeing measurements — they are different measurements. A precision figure without its labelled set is not a result.
+
+*Dedup* moved because there was a bug. `is_duplicate()` stamped `self._seen[key] = now` on every call, **including when the event was a duplicate**. That turned a 60-second fixed window into a sliding one that never expired: while a crashloop kept emitting, every check saw a fresh `last_seen`, so exactly one event was ever admitted — and because nothing passed dedup, the `AlertCooldown` layer beneath it was unreachable. A service down for six hours alerted once and never mentioned it again.
+
+**Concept.** Reproducibility as a debugging technique, not just a documentation virtue. Also: sliding vs fixed windows, and how an unconditional write inside a read-check silently changes which one you have.
+
+**Why it matters in OpsTron.** The measured numbers are the project's strongest claim. An unreproducible metric is worse than no metric — it looks rigorous and cannot be defended. And the dedup bug was a genuine operational defect: no re-notification on an ongoing outage, with a whole layer of the design dead in practice.
+
+**Solution.** Stamp only on admission. Committed `benchmarks/runbook_queries.json`, `run_retrieval_eval.py` and `run_dedup_load_test.py`, plus six regression tests pinning the window semantics, the ratio, and that cooldown is reachable. Corrected the numbers in place with a dated note saying what they were and why they moved.
+
+**Alternatives.** Keep the sliding behaviour and call it "one incident per episode" — defensible as a product decision, and it produces a better-looking 82:1. Rejected because it leaves the cooldown layer dead and provides no re-notification, which is the worse failure.
+
+**Location.** `agent/app/core/dedup.py::is_duplicate`, `agent/benchmarks/`, `agent/tests/test_dedup_and_retrieval.py`
+
+**Learn.** Treat every number you have written down as unverified until a command regenerates it. When a benchmark disagrees with your memory, the benchmark is usually right — and the disagreement is where the bug is.
+
+**Mastery:** Understand → Architect
+
+**Exercise.** Revert the one-line fix (stamp unconditionally) and run `run_dedup_load_test.py`. Explain why 12 becomes 3, and why that makes `AlertCooldown` unreachable. Then explain which behaviour you would ship and why.

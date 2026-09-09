@@ -339,6 +339,82 @@ Prototyped and deferred. Worth knowing why: a `StreamingResponse` commits `200 O
 
 ---
 
+---
+
+## Measurement and benchmarking
+
+Added after two recorded metrics failed to reproduce. This is now the section that matters most for interviews, because it is the one most projects skip.
+
+**A metric is a claim until it has a harness** — `Architect`
+`92% precision@1` and `22:1 suppression` lived in `LEARNINGS.md` for weeks with nothing to re-run them. Building the harnesses moved both numbers. Any figure you would put on a CV ships with the command that regenerates it.
+→ `agent/benchmarks/`
+
+**Precision@k, and why the query set is half the number** — `Implement`
+`8/12` and `92%` are not disagreeing measurements — they are different measurements. A precision figure without its labelled set is meaningless. State the corpus size too: 3 runbooks means a ~33% random-guess floor.
+→ `agent/benchmarks/runbook_queries.json`
+
+**Reading failure patterns, not just failure counts** — `Architect`
+All four retrieval misses returned the same runbook. That is the actual finding: one document is broader than the others and dominates similarity for anything latency-shaped. Corpus imbalance, invisible if you only look at the score.
+
+**Deterministic testing of time-dependent logic** — `Implement`
+A suppression ratio measured against wall-clock timing drifts with machine load. Injecting a fake clock makes the same input produce the same answer every run — and takes milliseconds instead of minutes.
+→ `agent/benchmarks/run_dedup_load_test.py`, `tests/test_dedup_and_retrieval.py`
+
+**Sliding vs fixed windows** — `Implement`
+`is_duplicate()` stamped its timestamp on every call including duplicates, turning a 60s fixed window into a sliding one that never expired. One event admitted ever, and the cooldown layer beneath it unreachable. Know which semantics you are implementing.
+→ `agent/app/core/dedup.py::is_duplicate`
+
+**Layered suppression: protecting compute vs protecting humans** — `Architect`
+Dedup asks "is this new information?" and guards the LLM budget. Cooldown asks "does a person need telling again?" and guards the on-call. Different keys, different windows, different jobs — which is why one cannot replace the other.
+→ `agent/app/core/dedup.py`
+
+*Skip:* statistical significance testing, A/B frameworks, MLflow. The measurements here are small and deterministic; they do not need that machinery.
+
+---
+
+## The map
+
+How the areas depend on each other. Follow an arrow only after the box behind it makes sense.
+
+```mermaid
+graph TD
+    PY["Python async<br/>orchestrator.py"]
+    API["FastAPI routers<br/>+ HTTP semantics"]
+    LLM["LLM client<br/>+ structured output"]
+    RAG["RAG retrieval<br/>ChromaDB"]
+    AGENT["Agent pipeline<br/>fatal vs non-fatal"]
+    MEAS["Measurement<br/>benchmarks + harnesses"]
+    SEC["Security<br/>boundaries + injection"]
+    DB["Supabase<br/>RLS + PostgREST"]
+    OAUTH["GitHub OAuth<br/>+ HMAC webhooks"]
+    FE["React frontend<br/>build-time config"]
+    CI["CI/CD<br/>deploy + wheels"]
+
+    PY --> API
+    API --> AGENT
+    LLM --> AGENT
+    RAG --> AGENT
+    AGENT --> MEAS
+    RAG --> MEAS
+    AGENT --> SEC
+    API --> SEC
+    API --> DB
+    API --> OAUTH
+    OAUTH --> SEC
+    API --> FE
+    FE --> CI
+    DB --> CI
+
+    classDef core fill:#111,stroke:#999,color:#fff
+    classDef next fill:#333,stroke:#777,color:#fff
+    class PY,API,AGENT core
+    class MEAS,SEC next
+```
+
+**Start at `PY → API → AGENT`.** That path is the spine — everything else attaches to it. `MEAS` and `SEC` are the two that produce interview answers, so reach them early rather than saving them for last.
+
+---
+
 ## Suggested order
 
 1. **Backend + APIs** — the orchestrator and routers are the spine.
@@ -349,5 +425,8 @@ Prototyped and deferred. Worth knowing why: a `StreamingResponse` commits `200 O
 6. **Frontend** — build-time config is the part that actually bites.
 7. **CI/CD + deployment** — platform-specific resolution, ephemeral disks.
 8. **Testing + Observability** — what to assert, and what isn't measured.
-9. **Instrumentation** — measuring versus simulating; what each verification step actually catches.
-10. **Design + accessibility** — redundant encoding and the CSS cascade; short, and it pays for itself the first time a token edit appears to do nothing.
+9. **Measurement + benchmarking** — harnesses, failure patterns, deterministic time.
+10. **Instrumentation** — measuring versus simulating; what each verification step actually catches.
+11. **Design + accessibility** — redundant encoding and the CSS cascade; short, and it pays for itself the first time a token edit appears to do nothing.
+
+> **Do measurement early, not last.** It sits at position 9 by dependency, but it is where your strongest interview answers come from — every number on your CV traces back to it.
