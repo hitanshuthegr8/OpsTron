@@ -33,8 +33,14 @@ The orchestrator treats a `CommitAgent` failure as non-fatal (empty commits) but
 Endpoints are grouped per feature and composed into one `api_router`. Adding `/demo` meant adding a module, not touching `main.py`.
 → `agent/app/api/__init__.py`, `agent/app/api/routes/demo.py`
 
-**Dependency injection vs manual checks** — `Understand`
-Auth here is enforced by explicit calls rather than FastAPI `Depends`. Know the trade-off — and that the demo router deliberately has neither.
+**Dependency injection, and its two styles** — `Implement`
+Auth is enforced with FastAPI `Depends` throughout — three shortcuts (`GitHubAuth`,
+`AgentKeyAuth`, `GitHubWebhookAuth`) defined once and used 26 times. Note *why* two styles
+exist: `_user: dict = GitHubAuth` injects the identity, while
+`dependencies=[GitHubWebhookAuth]` runs the gate and discards the result, because HMAC
+verification returns only `True` and a webhook carries no identity to use. The demo router
+deliberately has neither.
+→ `agent/app/api/middleware/auth.py`, `agent/app/api/routes/ingest.py`
 
 **Middleware ordering** — `Read`
 `CORSMiddleware` runs before route handlers, which is exactly why a blocked preflight never appears in application logs.
